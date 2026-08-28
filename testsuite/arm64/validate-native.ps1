@@ -2,8 +2,13 @@
 
 [CmdletBinding()]
 param(
+	[AllowNull()]
+	[AllowEmptyString()]
 	[string]$BusyBoxPath,
+	[AllowNull()]
+	[AllowEmptyString()]
 	[string]$ModulePolicyPath,
+	[ValidateNotNullOrEmpty()]
 	[string]$EvidencePath = (Join-Path (Get-Location) `
 		'arm64-native-evidence.json')
 )
@@ -36,13 +41,26 @@ $records = [ordered]@{}
 
 function Add-EvidenceRecord {
 	param(
-		[Parameter(Mandatory)][string]$Id,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Id,
 		[Parameter(Mandatory)]
 		[ValidateSet('pass', 'fail', 'blocked', 'skipped')]
+		[ValidateNotNullOrEmpty()]
 		[string]$Status,
-		[Parameter(Mandatory)][object]$Expected,
-		[Parameter(Mandatory)][object]$Observed,
-		[Parameter(Mandatory)][string]$Detail
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[AllowEmptyCollection()]
+		[object]$Expected,
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[AllowEmptyCollection()]
+		[object]$Observed,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Detail
 	)
 
 	if ($Id -notin $recordIds) {
@@ -66,8 +84,13 @@ function Add-EvidenceRecord {
 
 function Write-Utf8File {
 	param(
-		[Parameter(Mandatory)][string]$Path,
-		[AllowEmptyString()][string]$Content
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Path,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Content
 	)
 
 	$fullPath = [IO.Path]::GetFullPath($Path)
@@ -87,8 +110,12 @@ function Write-Utf8File {
 
 function Get-RunObservation {
 	param(
-		[Parameter(Mandatory)][object]$Result,
-		[Parameter(Mandatory)][string]$LogPrefix
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[object]$Result,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$LogPrefix
 	)
 
 	$stdoutPath = Write-Utf8File "$LogPrefix.stdout.txt" $Result.stdout
@@ -105,7 +132,11 @@ function Get-RunObservation {
 }
 
 function Start-HeldBusyBoxProcess {
-	param([Parameter(Mandatory)][string]$Path)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Path
+	)
 
 	$info = [Diagnostics.ProcessStartInfo]::new()
 	$info.FileName = $Path

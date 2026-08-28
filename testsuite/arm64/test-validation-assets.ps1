@@ -13,8 +13,12 @@ $script:failed = 0
 
 function Invoke-TestCase {
 	param(
-		[Parameter(Mandatory)][string]$Name,
-		[Parameter(Mandatory)][scriptblock]$Body
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Name,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[scriptblock]$Body
 	)
 
 	try {
@@ -29,7 +33,12 @@ function Invoke-TestCase {
 }
 
 function Assert-True {
-	param([bool]$Condition, [string]$Message)
+	param(
+		[Parameter(Mandatory)][bool]$Condition,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Message
+	)
 
 	if (-not $Condition) {
 		throw [InvalidOperationException]::new($Message)
@@ -37,7 +46,21 @@ function Assert-True {
 }
 
 function Assert-Equal {
-	param([object]$Expected, [object]$Observed, [string]$Message)
+	param(
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[AllowEmptyCollection()]
+		[object]$Expected,
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[AllowEmptyCollection()]
+		[object]$Observed,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Message
+	)
 
 	if ([string]$Expected -cne [string]$Observed) {
 		throw [InvalidOperationException]::new(
@@ -47,7 +70,15 @@ function Assert-Equal {
 }
 
 function Assert-NoFailures {
-	param([object[]]$Failures, [string]$Scope)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
+		[object[]]$Failures,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Scope
+	)
 
 	if ($Failures.Count -ne 0) {
 		throw [InvalidOperationException]::new(
@@ -57,7 +88,15 @@ function Assert-NoFailures {
 }
 
 function Assert-Rejected {
-	param([object[]]$Failures, [string]$Scope)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
+		[object[]]$Failures,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Scope
+	)
 
 	if ($Failures.Count -eq 0) {
 		throw [InvalidOperationException]::new(
@@ -67,7 +106,14 @@ function Assert-Rejected {
 }
 
 function Assert-Throws {
-	param([scriptblock]$Body, [string]$Scope)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[scriptblock]$Body,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Scope
+	)
 
 	$threw = $false
 	try {
@@ -83,25 +129,52 @@ function Assert-Throws {
 }
 
 function Set-UInt16LE {
-	param([byte[]]$Bytes, [int]$Offset, [uint16]$Value)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[byte[]]$Bytes,
+		[Parameter(Mandatory)][int]$Offset,
+		[Parameter(Mandatory)][uint16]$Value
+	)
 
 	[BitConverter]::GetBytes($Value).CopyTo($Bytes, $Offset)
 }
 
 function Set-UInt32LE {
-	param([byte[]]$Bytes, [int]$Offset, [uint32]$Value)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[byte[]]$Bytes,
+		[Parameter(Mandatory)][int]$Offset,
+		[Parameter(Mandatory)][uint32]$Value
+	)
 
 	[BitConverter]::GetBytes($Value).CopyTo($Bytes, $Offset)
 }
 
 function Set-UInt64LE {
-	param([byte[]]$Bytes, [int]$Offset, [uint64]$Value)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[byte[]]$Bytes,
+		[Parameter(Mandatory)][int]$Offset,
+		[Parameter(Mandatory)][uint64]$Value
+	)
 
 	[BitConverter]::GetBytes($Value).CopyTo($Bytes, $Offset)
 }
 
 function Set-AsciiZ {
-	param([byte[]]$Bytes, [int]$Offset, [string]$Value)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[byte[]]$Bytes,
+		[Parameter(Mandatory)][int]$Offset,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Value
+	)
 
 	$data = [Text.Encoding]::ASCII.GetBytes($Value)
 	$data.CopyTo($Bytes, $Offset)
@@ -170,7 +243,11 @@ function New-SyntheticPe {
 }
 
 function Get-ArchitectureSurfaceFiles {
-	param([Parameter(Mandatory)][string]$RepositoryRoot)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$RepositoryRoot
+	)
 
 	$tracked = @(& git -C $RepositoryRoot ls-files)
 	if ($LASTEXITCODE -ne 0) {
@@ -197,7 +274,12 @@ function Get-ArchitectureSurfaceFiles {
 }
 
 function Assert-MakeToolPolicy {
-	param([Parameter(Mandatory)][string]$Text)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Text
+	)
 
 	$patterns = @(
 		'(?m)^AS\s*=\s*\$\(CROSS_COMPILE\)as\r?$',
@@ -218,7 +300,12 @@ function Assert-MakeToolPolicy {
 }
 
 function Assert-LinkPolicy {
-	param([Parameter(Mandatory)][string]$Text)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Text
+	)
 
 	foreach ($pattern in @(
 		'(?s)ifeq\s+\(\$\(CONFIG_STATIC\),y\).*?CFLAGS_busybox\s*\+=\s*-static.*?endif',
@@ -263,6 +350,467 @@ $smokeText = Get-Content `
 $nativeScriptText = Get-Content `
 	-LiteralPath (Join-Path $PSScriptRoot 'validate-native.ps1') `
 	-Raw -Encoding UTF8
+
+Invoke-TestCase 'parameter contracts distinguish null empty and empty collections' {
+	$allowBothStrings = @(
+		'Arm64Validation.psm1::Assert-ModulePolicyString::Pattern',
+		'Arm64Validation.psm1::Get-NativeEnvironmentPolicyFailures::ProcessorArchitecture',
+		'Arm64Validation.psm1::Get-NativeEnvironmentPolicyFailures::ProcessorArchitew6432',
+		'Arm64Validation.psm1::Invoke-CapturedProcess::WorkingDirectory',
+		'validate-native.ps1::<script>::BusyBoxPath',
+		'validate-native.ps1::<script>::ModulePolicyPath'
+	)
+	$allowEmptyStrings = @(
+		'Arm64Validation.psm1::Get-CanonicalRepositoryRelativePath::Path',
+		'Arm64Validation.psm1::Get-ConfigEquivalenceFailures::ExpectedText',
+		'Arm64Validation.psm1::Get-ConfigEquivalenceFailures::ObservedText',
+		'Arm64Validation.psm1::Get-Mingw64aConfigPolicyFailures::Text',
+		'Arm64Validation.psm1::Get-Settings::Text',
+		'Arm64Validation.psm1::Get-TestResultAccounting::Output',
+		'Arm64Validation.psm1::Get-TextSha256::Text',
+		'Arm64Validation.psm1::Get-UnameSourcePolicyFailures::Text',
+		'Arm64Validation.psm1::Write-CanonicalEvidenceAscii::Text',
+		'Arm64Validation.psm1::Write-CanonicalEvidenceText::Text',
+		'test-validation-assets.ps1::Assert-LinkPolicy::Text',
+		'test-validation-assets.ps1::Assert-MakeToolPolicy::Text',
+		'test-validation-assets.ps1::Set-AsciiZ::Value',
+		'validate-native.ps1::Write-Utf8File::Content'
+	)
+	$allowAllObjects = @(
+		'Arm64Validation.psm1::Assert-ModulePolicyIdentity::Identity',
+		'Arm64Validation.psm1::Assert-ModulePolicyString::Value',
+		'Arm64Validation.psm1::Write-CanonicalEvidenceValue::Value',
+		'test-validation-assets.ps1::Assert-Equal::Expected',
+		'test-validation-assets.ps1::Assert-Equal::Observed',
+		'test-validation-assets.ps1::<scriptblock:probeContract>::Value',
+		'validate-native.ps1::Add-EvidenceRecord::Expected',
+		'validate-native.ps1::Add-EvidenceRecord::Observed'
+	)
+	$allowEmptyCollections = @(
+		'Arm64Validation.psm1::Assert-ByteRange::Bytes',
+		'Arm64Validation.psm1::Assert-ClosedKeys::Expected',
+		'Arm64Validation.psm1::Compare-ModulePolicy::Modules',
+		'Arm64Validation.psm1::Convert-RvaToFileOffset::Sections',
+		'Arm64Validation.psm1::Get-PeImageInfoFromBytes::Bytes',
+		'Arm64Validation.psm1::Invoke-CapturedProcess::Environment',
+		'Arm64Validation.psm1::Read-AsciiZ::Bytes',
+		'Arm64Validation.psm1::Read-DelayImportNames::Bytes',
+		'Arm64Validation.psm1::Read-DelayImportNames::Sections',
+		'Arm64Validation.psm1::Read-ImportNames::Bytes',
+		'Arm64Validation.psm1::Read-ImportNames::Sections',
+		'Arm64Validation.psm1::Read-UInt16LE::Bytes',
+		'Arm64Validation.psm1::Read-UInt32LE::Bytes',
+		'Arm64Validation.psm1::Read-UInt64LE::Bytes',
+		'test-validation-assets.ps1::Assert-NoFailures::Failures',
+		'test-validation-assets.ps1::Assert-Rejected::Failures'
+	)
+	$allowEmptyStringCollections = @(
+		'Arm64Validation.psm1::Invoke-CapturedProcess::ArgumentList'
+	)
+	$rejectNullOnly = @(
+		'Arm64Validation.psm1::Get-ProcessModuleSnapshot::Process',
+		'Arm64Validation.psm1::Write-CanonicalEvidenceAscii::Stream',
+		'Arm64Validation.psm1::Write-CanonicalEvidenceText::Stream',
+		'Arm64Validation.psm1::Write-CanonicalEvidenceValue::Stream',
+		'test-validation-assets.ps1::Assert-Throws::Body',
+		'test-validation-assets.ps1::Invoke-TestCase::Body'
+	)
+	$optionalWithoutDefault = @(
+		'Arm64Validation.psm1::Assert-ModulePolicyString::Pattern',
+		'Arm64Validation.psm1::Invoke-CapturedProcess::WorkingDirectory',
+		'validate-native.ps1::<script>::BusyBoxPath',
+		'validate-native.ps1::<script>::ModulePolicyPath'
+	)
+	$exceptions = @(
+		$allowBothStrings
+		$allowEmptyStrings
+		$allowAllObjects
+		$allowEmptyCollections
+		$allowEmptyStringCollections
+		$rejectNullOnly
+	)
+	Assert-Equal $exceptions.Count `
+		@($exceptions | Sort-Object -Unique).Count `
+		'Parameter contract exception IDs are not unique'
+
+	$parameterRows = @()
+	$valueParameterRows = @()
+	foreach ($path in @(
+		(Join-Path $PSScriptRoot 'Arm64Validation.psm1'),
+		(Join-Path $PSScriptRoot 'validate-native.ps1'),
+		$PSCommandPath
+	)) {
+		$tokens = $null
+		$errors = $null
+		$ast = [Management.Automation.Language.Parser]::ParseFile(
+			$path,
+			[ref]$tokens,
+			[ref]$errors
+		)
+		Assert-Equal 0 $errors.Count `
+			"Parameter inventory parse errors in '$path'"
+		$paramBlocks = @($ast.FindAll({
+			param(
+				[Parameter(Mandatory)]
+				[ValidateNotNullOrEmpty()]
+				[object]$node
+			)
+
+			$node -is
+				[Management.Automation.Language.ParamBlockAst]
+		}, $true))
+		foreach ($paramBlock in $paramBlocks) {
+			$owner = $null
+			if ($paramBlock -eq $ast.ParamBlock) {
+				$owner = '<script>'
+			} else {
+				$ancestor = $paramBlock.Parent
+				while ($null -ne $ancestor) {
+					if ($ancestor -is
+					    [Management.Automation.Language.FunctionDefinitionAst]) {
+						$owner = $ancestor.Name
+						break
+					}
+					if ($ancestor -is
+					    [Management.Automation.Language.AssignmentStatementAst] -and
+					    $ancestor.Left -is
+					    [Management.Automation.Language.VariableExpressionAst]) {
+						$owner = '<scriptblock:{0}>' -f
+							$ancestor.Left.VariablePath.UserPath
+						break
+					}
+					$ancestor = $ancestor.Parent
+				}
+			}
+			if ($null -eq $owner) {
+				$owner = '<scriptblock:{0}>' -f
+					$paramBlock.Extent.StartLineNumber
+			}
+			foreach ($parameter in $paramBlock.Parameters) {
+				$mandatory = $false
+				foreach ($attribute in @($parameter.Attributes |
+					Where-Object {
+						$_.TypeName.Name -eq 'Parameter'
+					})) {
+					foreach ($argument in @(
+						$attribute.NamedArguments |
+						Where-Object ArgumentName -eq 'Mandatory'
+					)) {
+						if ($argument.ExpressionOmitted -or
+						    [bool]$argument.Argument.SafeGetValue()) {
+							$mandatory = $true
+						}
+					}
+				}
+				if ($parameter.StaticType.IsValueType) {
+					$valueParameterRows += [pscustomobject]@{
+						id = '{0}::{1}::{2}' -f
+							[IO.Path]::GetFileName($path),
+							$owner,
+							$parameter.Name.VariablePath.UserPath
+						parameter = $parameter
+						mandatory = $mandatory
+					}
+					continue
+				}
+				$parameterRows += [pscustomobject]@{
+					id = '{0}::{1}::{2}' -f
+						[IO.Path]::GetFileName($path),
+						$owner,
+						$parameter.Name.VariablePath.UserPath
+					parameter = $parameter
+					mandatory = $mandatory
+				}
+			}
+		}
+	}
+	Assert-Equal 106 $parameterRows.Count `
+		'Reference-valued parameter inventory count differs'
+	Assert-Equal 28 $valueParameterRows.Count `
+		'Value-type parameter inventory count differs'
+	foreach ($row in $valueParameterRows) {
+		$parameter = $row.parameter
+		$shouldBeMandatory =
+			$null -eq $parameter.DefaultValue -and
+			$parameter.StaticType -ne
+				[Management.Automation.SwitchParameter]
+		Assert-Equal $shouldBeMandatory $row.mandatory `
+			"$($row.id) mandatory contract differs"
+		$omittedProbe = [scriptblock]::Create(
+			"[CmdletBinding()]`nparam($($parameter.Extent.Text))`n" +
+			"'PARAMETER-CONTRACT-BODY-RAN'"
+		)
+		$omittedError = $null
+		$omittedOutput = $null
+		try {
+			$omittedOutput = & $omittedProbe
+		} catch {
+			$omittedError = $_
+		}
+		if ($shouldBeMandatory) {
+			Assert-True ($null -ne $omittedError) `
+				"$($row.id) accepted an omitted mandatory argument"
+			Assert-Equal `
+				'System.Management.Automation.ParameterBindingException' `
+				$omittedError.Exception.GetType().FullName `
+				"$($row.id) omission failed for the wrong reason"
+			Assert-Equal 'MissingMandatoryParameter' `
+				$omittedError.FullyQualifiedErrorId `
+				"$($row.id) omission returned the wrong binding error"
+			Assert-True ($omittedError.Exception.Message.Contains(
+				$parameter.Name.VariablePath.UserPath
+			)) "$($row.id) omission named the wrong parameter"
+		} else {
+			if ($null -ne $omittedError) {
+				throw [InvalidOperationException]::new(
+					"$($row.id) rejected deliberate omission: " +
+					$omittedError.Exception.Message
+				)
+			}
+			Assert-Equal 'PARAMETER-CONTRACT-BODY-RAN' `
+				$omittedOutput `
+				"$($row.id) optional omission did not reach the body"
+		}
+	}
+	foreach ($id in @(
+		'Arm64Validation.psm1::Invoke-CapturedProcess::TimeoutSeconds',
+		'Arm64Validation.psm1::Read-AsciiZ::MaximumLength'
+	)) {
+		$row = @($valueParameterRows | Where-Object id -eq $id)
+		Assert-Equal 1 $row.Count `
+			"Ranged value parameter '$id' inventory differs"
+		$names = @($row[0].parameter.Attributes |
+			ForEach-Object { $_.TypeName.Name })
+		Assert-True ('ValidateRange' -in $names) `
+			"$id lacks its deliberate positive range"
+	}
+	$actualIds = @($parameterRows.id | Sort-Object -Unique)
+	foreach ($id in $exceptions) {
+		Assert-True ($id -in $actualIds) `
+			"Parameter contract exception '$id' does not exist"
+	}
+	foreach ($id in $optionalWithoutDefault) {
+		Assert-True ($id -in $actualIds) `
+			"Optional parameter contract '$id' does not exist"
+	}
+
+	$probeContract = {
+		param(
+			[Parameter(Mandatory)]
+			[ValidateNotNullOrEmpty()]
+			[string]$Id,
+			[Parameter(Mandatory)]
+			[ValidateNotNullOrEmpty()]
+			[string]$Declaration,
+			[Parameter(Mandatory)]
+			[ValidateNotNullOrEmpty()]
+			[string]$ParameterName,
+			[Parameter(Mandatory)]
+			[AllowNull()]
+			[AllowEmptyString()]
+			[AllowEmptyCollection()]
+			[object]$Value,
+			[Parameter(Mandatory)][bool]$ShouldAllow,
+			[Parameter(Mandatory)]
+			[ValidateNotNullOrEmpty()]
+			[string]$Reason
+		)
+
+		$probe = [scriptblock]::Create(
+			"[CmdletBinding()]`nparam($Declaration)`n" +
+			"'PARAMETER-CONTRACT-BODY-RAN'"
+		)
+		$arguments = @{}
+		$arguments[$ParameterName] = $Value
+		$caught = $null
+		$output = $null
+		try {
+			$output = & $probe @arguments
+		} catch {
+			$caught = $_
+		}
+		if ($ShouldAllow) {
+			if ($null -ne $caught) {
+				throw [InvalidOperationException]::new(
+					"$Id unexpectedly rejected $Reason`: " +
+					$caught.Exception.Message
+				)
+			}
+			Assert-Equal 'PARAMETER-CONTRACT-BODY-RAN' $output `
+				"$Id did not reach the isolated body for $Reason"
+			return
+		}
+		if ($null -eq $caught) {
+			throw [InvalidOperationException]::new(
+				"$Id unexpectedly accepted $Reason"
+			)
+		}
+		Assert-Equal `
+			'System.Management.Automation.ParameterBindingValidationException' `
+			$caught.Exception.GetType().FullName `
+			"$Id rejected $Reason for a non-validation reason"
+		Assert-True ($caught.FullyQualifiedErrorId -like
+			'ParameterArgumentValidationError*') `
+			"$Id returned the wrong binding error for $Reason"
+		Assert-True ($caught.Exception.Message.Contains(
+			"parameter '$ParameterName'"
+		)) "$Id binding error named the wrong parameter for $Reason"
+		Assert-True ($caught.Exception.Message -match $Reason) `
+			"$Id binding error did not state the $Reason reason"
+	}
+
+	foreach ($row in $parameterRows) {
+		$id = $row.id
+		$parameter = $row.parameter
+		$names = @($parameter.Attributes |
+			ForEach-Object { $_.TypeName.Name })
+		$category = if ($id -in $allowBothStrings) {
+			'allow-null-empty-string'
+		} elseif ($id -in $allowEmptyStrings) {
+			'allow-empty-string'
+		} elseif ($id -in $allowAllObjects) {
+			'allow-all-object'
+		} elseif ($id -in $allowEmptyCollections) {
+			'allow-empty-collection'
+		} elseif ($id -in $allowEmptyStringCollections) {
+			'allow-empty-string-collection'
+		} elseif ($id -in $rejectNullOnly) {
+			'reject-null-only'
+		} else {
+			'reject-null-empty'
+		}
+		$expectedAttributes = switch ($category) {
+			'allow-null-empty-string' {
+				@('AllowEmptyString', 'AllowNull')
+			}
+			'allow-empty-string' {
+				@('AllowEmptyString', 'ValidateNotNull')
+			}
+			'allow-all-object' {
+				@('AllowEmptyCollection', 'AllowEmptyString', 'AllowNull')
+			}
+			'allow-empty-collection' {
+				@('AllowEmptyCollection', 'ValidateNotNull')
+			}
+			'allow-empty-string-collection' {
+				@(
+					'AllowEmptyCollection',
+					'AllowEmptyString',
+					'ValidateNotNull'
+				)
+			}
+			'reject-null-only' {
+				@('ValidateNotNull')
+			}
+			default {
+				@('ValidateNotNullOrEmpty')
+			}
+		}
+		$contractAttributes = @($names | Where-Object {
+			$_ -in @(
+				'AllowEmptyCollection',
+				'AllowEmptyString',
+				'AllowNull',
+				'ValidateNotNull',
+				'ValidateNotNullOrEmpty'
+			)
+		} | Sort-Object)
+		Assert-Equal ($expectedAttributes -join ',') `
+			($contractAttributes -join ',') `
+			"$id contract attributes differ"
+
+		$declaration = $parameter.Extent.Text
+		$parameterName = $parameter.Name.VariablePath.UserPath
+		$shouldBeMandatory =
+			$null -eq $parameter.DefaultValue -and
+			$id -notin $optionalWithoutDefault
+		Assert-Equal $shouldBeMandatory $row.mandatory `
+			"$id mandatory contract differs"
+		$omittedProbe = [scriptblock]::Create(
+			"[CmdletBinding()]`nparam($declaration)`n" +
+			"'PARAMETER-CONTRACT-BODY-RAN'"
+		)
+		$omittedError = $null
+		$omittedOutput = $null
+		try {
+			$omittedOutput = & $omittedProbe
+		} catch {
+			$omittedError = $_
+		}
+		if ($shouldBeMandatory) {
+			Assert-True ($null -ne $omittedError) `
+				"$id accepted an omitted mandatory argument"
+			Assert-Equal `
+				'System.Management.Automation.ParameterBindingException' `
+				$omittedError.Exception.GetType().FullName `
+				"$id omitted argument failed for the wrong reason"
+			Assert-Equal 'MissingMandatoryParameter' `
+				$omittedError.FullyQualifiedErrorId `
+				"$id omitted argument returned the wrong binding error"
+			Assert-True ($omittedError.Exception.Message.Contains(
+				$parameterName
+			)) "$id omitted-argument error named the wrong parameter"
+		} else {
+			if ($null -ne $omittedError) {
+				throw [InvalidOperationException]::new(
+					"$id rejected deliberate omission: " +
+					$omittedError.Exception.Message
+				)
+			}
+			Assert-Equal 'PARAMETER-CONTRACT-BODY-RAN' `
+				$omittedOutput `
+				"$id optional omission did not reach the isolated body"
+		}
+
+		if ($parameter.StaticType -eq [string]) {
+			$allowEmpty = $category -in @(
+				'allow-empty-string',
+				'allow-null-empty-string'
+			)
+			$allowNull = $category -eq 'allow-null-empty-string'
+			& $probeContract $id $declaration $parameterName `
+				([Management.Automation.Language.NullString]::Value) `
+				$allowNull 'null'
+			& $probeContract $id $declaration $parameterName '' `
+				$allowEmpty 'empty'
+			& $probeContract $id $declaration $parameterName $null `
+				$allowEmpty 'empty'
+		} elseif ($parameter.StaticType.IsArray) {
+			$allowEmpty = $category -in @(
+				'allow-empty-collection',
+				'allow-empty-string-collection'
+			)
+			$empty = [Array]::CreateInstance(
+				$parameter.StaticType.GetElementType(),
+				0
+			)
+			& $probeContract $id $declaration $parameterName $null `
+				$false 'null'
+			& $probeContract $id $declaration $parameterName $empty `
+				$allowEmpty 'empty'
+			if ($category -eq 'allow-empty-string-collection') {
+				& $probeContract $id $declaration $parameterName @('') `
+					$true 'empty'
+			}
+		} elseif ($parameter.StaticType -eq [object]) {
+			$allowEmpty = $category -eq 'allow-all-object'
+			& $probeContract $id $declaration $parameterName $null `
+				$allowEmpty 'null'
+			& $probeContract $id $declaration $parameterName '' `
+				$allowEmpty 'empty'
+			& $probeContract $id $declaration $parameterName @() `
+				$allowEmpty 'empty'
+		} elseif ($parameter.StaticType -eq [hashtable]) {
+			& $probeContract $id $declaration $parameterName $null `
+				$false 'null'
+			& $probeContract $id $declaration $parameterName @{} `
+				$true 'empty'
+		} else {
+			& $probeContract $id $declaration $parameterName $null `
+				$false 'null'
+		}
+	}
+}
 
 Invoke-TestCase 'ARM64 architecture surface inventory is closed' {
 	$expected = @(
@@ -379,7 +927,12 @@ Invoke-TestCase 'native diagnostic contains a closed record ID set' {
 	)
 	Assert-Equal 0 $errors.Count 'Native diagnostic has parse errors'
 	$assignment = @($ast.FindAll({
-		param($node)
+		param(
+			[Parameter(Mandatory)]
+			[ValidateNotNullOrEmpty()]
+			[object]$node
+		)
+
 		$node -is
 			[Management.Automation.Language.AssignmentStatementAst] -and
 		$node.Left -is
@@ -388,7 +941,12 @@ Invoke-TestCase 'native diagnostic contains a closed record ID set' {
 	}, $true))
 	Assert-Equal 1 $assignment.Count 'recordIds assignment count differs'
 	$ids = @($assignment[0].Right.FindAll({
-		param($node)
+		param(
+			[Parameter(Mandatory)]
+			[ValidateNotNullOrEmpty()]
+			[object]$node
+		)
+
 		$node -is
 			[Management.Automation.Language.StringConstantExpressionAst]
 	}, $true) | ForEach-Object Value)

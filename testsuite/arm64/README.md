@@ -31,6 +31,40 @@ selection, parse deterministic synthetic PE files, and mutation-test:
 
 These checks inspect source policy only. They are not build or runtime evidence.
 
+### PowerShell parameter contracts
+
+The parameter sweep ranks contracts by trust boundary:
+
+1. The manually supplied candidate and module-policy paths deliberately accept
+   null and empty strings so the diagnostic records them as blocked. The
+   evidence output path, executable paths, repository roots, record IDs, and
+   schema labels reject null and empty values with
+   `ValidateNotNullOrEmpty`.
+2. Candidate PE byte arrays accept an empty collection so a zero-byte file
+   reaches the structural parser and produces a field-specific failure; null
+   byte arrays are rejected. Empty section and module collections likewise
+   reach structural or exact-set comparison, while null collections do not.
+3. Source/config text, captured output, and file content accept an empty string
+   so missing content is evaluated or recorded; a true null string is rejected.
+   Optional environment observations accept both because absence is itself
+   evidence that the native-environment policy fails.
+4. The canonical value writer accepts JSON null, empty strings, and empty
+   arrays as distinct framed values. The outer evidence document and
+   repository root reject absence. Policy-validation helpers admit null and
+   empty external values only far enough to issue their explicit schema/type
+   rejection instead of failing incidentally in PowerShell binding.
+
+`ValidateNotNullOrEmpty` remains on parameters for which both cases are
+invalid; the sweep does not make deliberate rejection permissive. The source
+test extracts each exact declaration and exercises it in an isolated advanced
+function. It uses `Language.NullString` to distinguish a true null string from
+an empty string (ordinary PowerShell `$null` converts to empty during string
+binding), creates a typed zero-length array for collection checks, requires
+allowed cases to reach a sentinel body, and requires rejected cases to be a
+`ParameterBindingValidationException` that names the parameter and the
+null/empty reason. This prevents an unrelated function-body exception from
+satisfying a contract test.
+
 ## Dormant native diagnostic
 
 `validate-native.ps1` must be invoked manually on genuine ARM64 Windows

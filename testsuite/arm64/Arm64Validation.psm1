@@ -9,9 +9,14 @@ $script:Pe32PlusMagic = [uint16]0x020b
 
 function Assert-ByteRange {
 	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[byte[]]$Bytes,
-		[long]$Offset,
-		[int]$Count,
+		[Parameter(Mandatory)][long]$Offset,
+		[Parameter(Mandatory)][int]$Count,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
 		[string]$Field
 	)
 
@@ -24,21 +29,48 @@ function Assert-ByteRange {
 }
 
 function Read-UInt16LE {
-	param([byte[]]$Bytes, [long]$Offset, [string]$Field)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
+		[byte[]]$Bytes,
+		[Parameter(Mandatory)][long]$Offset,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Field
+	)
 
 	Assert-ByteRange $Bytes $Offset 2 $Field
 	return [BitConverter]::ToUInt16($Bytes, [int]$Offset)
 }
 
 function Read-UInt32LE {
-	param([byte[]]$Bytes, [long]$Offset, [string]$Field)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
+		[byte[]]$Bytes,
+		[Parameter(Mandatory)][long]$Offset,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Field
+	)
 
 	Assert-ByteRange $Bytes $Offset 4 $Field
 	return [BitConverter]::ToUInt32($Bytes, [int]$Offset)
 }
 
 function Read-UInt64LE {
-	param([byte[]]$Bytes, [long]$Offset, [string]$Field)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
+		[byte[]]$Bytes,
+		[Parameter(Mandatory)][long]$Offset,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Field
+	)
 
 	Assert-ByteRange $Bytes $Offset 8 $Field
 	return [BitConverter]::ToUInt64($Bytes, [int]$Offset)
@@ -46,9 +78,15 @@ function Read-UInt64LE {
 
 function Read-AsciiZ {
 	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[byte[]]$Bytes,
-		[long]$Offset,
+		[Parameter(Mandatory)][long]$Offset,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
 		[string]$Field,
+		[ValidateRange(1, 2147483647)]
 		[int]$MaximumLength = 4096
 	)
 
@@ -73,10 +111,15 @@ function Read-AsciiZ {
 
 function Convert-RvaToFileOffset {
 	param(
-		[uint32]$Rva,
-		[uint32]$SizeOfHeaders,
+		[Parameter(Mandatory)][uint32]$Rva,
+		[Parameter(Mandatory)][uint32]$SizeOfHeaders,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[object[]]$Sections,
-		[long]$FileLength,
+		[Parameter(Mandatory)][long]$FileLength,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
 		[string]$Field
 	)
 
@@ -120,9 +163,17 @@ function Convert-RvaToFileOffset {
 
 function Read-ImportNames {
 	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[byte[]]$Bytes,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
 		[object]$Directory,
-		[uint32]$SizeOfHeaders,
+		[Parameter(Mandatory)][uint32]$SizeOfHeaders,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[object[]]$Sections
 	)
 
@@ -175,11 +226,19 @@ function Read-ImportNames {
 
 function Read-DelayImportNames {
 	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[byte[]]$Bytes,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
 		[object]$Directory,
-		[uint32]$SizeOfHeaders,
+		[Parameter(Mandatory)][uint32]$SizeOfHeaders,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[object[]]$Sections,
-		[uint64]$ImageBase
+		[Parameter(Mandatory)][uint64]$ImageBase
 	)
 
 	if ($Directory.rva -eq 0 -and $Directory.size -eq 0) {
@@ -245,8 +304,10 @@ function Get-PeImageInfoFromBytes {
 	[CmdletBinding()]
 	param(
 		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[byte[]]$Bytes,
-
+		[ValidateNotNullOrEmpty()]
 		[string]$Source = '<memory>'
 	)
 
@@ -363,7 +424,9 @@ function Get-PeImageInfoFromBytes {
 		}
 	}
 
-	function Get-Directory([int]$Index) {
+	function Get-Directory {
+		param([Parameter(Mandatory)][int]$Index)
+
 		if ($Index -ge $directories.Count) {
 			return [pscustomobject]@{ index = $Index; rva = 0; size = 0 }
 		}
@@ -431,7 +494,11 @@ function Get-PeImageInfoFromBytes {
 
 function Get-PeImageInfo {
 	[CmdletBinding()]
-	param([Parameter(Mandatory)][string]$Path)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Path
+	)
 
 	$resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
 	$bytes = [IO.File]::ReadAllBytes($resolved)
@@ -440,7 +507,11 @@ function Get-PeImageInfo {
 
 function Get-Arm64PePolicyFailures {
 	[CmdletBinding()]
-	param([Parameter(Mandatory)][object]$Pe)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[object]$Pe
+	)
 
 	$failures = [Collections.Generic.List[string]]::new()
 	if ([uint16]$Pe.machine -ne $script:ImageFileMachineArm64) {
@@ -479,7 +550,12 @@ function Get-Arm64PePolicyFailures {
 
 function Get-Mingw64aConfigPolicyFailures {
 	[CmdletBinding()]
-	param([Parameter(Mandatory)][string]$Text)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Text
+	)
 
 	$requiredLines = @(
 		'CONFIG_PLATFORM_MINGW32=y',
@@ -522,11 +598,27 @@ function Get-Mingw64aConfigPolicyFailures {
 function Get-ConfigEquivalenceFailures {
 	[CmdletBinding()]
 	param(
-		[Parameter(Mandatory)][string]$ExpectedText,
-		[Parameter(Mandatory)][string]$ObservedText
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$ExpectedText,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$ObservedText
 	)
 
-	function Get-Settings([string]$Text, [string]$Scope) {
+	function Get-Settings {
+		param(
+			[Parameter(Mandatory)]
+			[ValidateNotNull()]
+			[AllowEmptyString()]
+			[string]$Text,
+			[Parameter(Mandatory)]
+			[ValidateNotNullOrEmpty()]
+			[string]$Scope
+		)
+
 		$settings = [ordered]@{}
 		foreach ($line in @($Text -split '\r?\n')) {
 			if ($line -eq '' -or $line -match '^#(?! CONFIG_)') {
@@ -583,7 +675,12 @@ function Get-ConfigEquivalenceFailures {
 
 function Get-UnameSourcePolicyFailures {
 	[CmdletBinding()]
-	param([Parameter(Mandatory)][string]$Text)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Text
+	)
 
 	$failures = [Collections.Generic.List[string]]::new()
 	$mappings = [ordered]@{
@@ -611,10 +708,20 @@ function Get-UnameSourcePolicyFailures {
 function Get-NativeEnvironmentPolicyFailures {
 	[CmdletBinding()]
 	param(
-		[Parameter(Mandatory)][string]$OsArchitecture,
-		[Parameter(Mandatory)][string]$ProcessArchitecture,
-		[AllowEmptyString()][string]$ProcessorArchitecture,
-		[AllowNull()][AllowEmptyString()][string]$ProcessorArchitew6432
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$OsArchitecture,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$ProcessArchitecture,
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[string]$ProcessorArchitecture,
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[string]$ProcessorArchitew6432
 	)
 
 	$failures = [Collections.Generic.List[string]]::new()
@@ -643,9 +750,16 @@ function Get-NativeEnvironmentPolicyFailures {
 
 function Assert-ClosedKeys {
 	param(
-		[Parameter(Mandatory)][object]$Object,
-		[Parameter(Mandatory)][string[]]$Expected,
-		[Parameter(Mandatory)][string]$Scope
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[object]$Object,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
+		[string[]]$Expected,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Scope
 	)
 
 	$actual = @($Object.PSObject.Properties.Name | Sort-Object)
@@ -659,8 +773,16 @@ function Assert-ClosedKeys {
 
 function Assert-ModulePolicyString {
 	param(
-		[Parameter(Mandatory)][AllowNull()][object]$Value,
-		[Parameter(Mandatory)][string]$Scope,
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[AllowEmptyCollection()]
+		[object]$Value,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Scope,
+		[AllowNull()]
+		[AllowEmptyString()]
 		[string]$Pattern
 	)
 
@@ -680,8 +802,14 @@ function Assert-ModulePolicyString {
 
 function Assert-ModulePolicyIdentity {
 	param(
-		[Parameter(Mandatory)][AllowNull()][object]$Identity,
-		[Parameter(Mandatory)][string]$Scope,
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[AllowEmptyCollection()]
+		[object]$Identity,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Scope,
 		[switch]$IncludePeMachine
 	)
 
@@ -723,7 +851,11 @@ function Assert-ModulePolicyIdentity {
 
 function Read-ModulePolicy {
 	[CmdletBinding()]
-	param([Parameter(Mandatory)][string]$Path)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Path
+	)
 
 	$resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
 	$policy = Get-Content -LiteralPath $resolved -Raw -Encoding UTF8 |
@@ -805,7 +937,11 @@ function Read-ModulePolicy {
 
 function Get-FileIdentity {
 	[CmdletBinding()]
-	param([Parameter(Mandatory)][string]$Path)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$Path
+	)
 
 	$resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
 	$item = Get-Item -LiteralPath $resolved -Force -ErrorAction Stop
@@ -885,7 +1021,11 @@ function Get-FileIdentity {
 
 function Get-ProcessModuleSnapshot {
 	[CmdletBinding()]
-	param([Parameter(Mandatory)][Diagnostics.Process]$Process)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[Diagnostics.Process]$Process
+	)
 
 	$Process.Refresh()
 	if ($Process.HasExited) {
@@ -925,10 +1065,19 @@ function Get-ProcessModuleSnapshot {
 function Compare-ModulePolicy {
 	[CmdletBinding()]
 	param(
-		[Parameter(Mandatory)][object]$Policy,
-		[Parameter(Mandatory)][object]$SubjectIdentity,
-		[Parameter(Mandatory)][object]$Pe,
-		[Parameter(Mandatory)][object[]]$Modules
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[object]$Policy,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[object]$SubjectIdentity,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[object]$Pe,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
+		[object[]]$Modules
 	)
 
 	$failures = [Collections.Generic.List[string]]::new()
@@ -999,10 +1148,20 @@ function Compare-ModulePolicy {
 function Invoke-CapturedProcess {
 	[CmdletBinding()]
 	param(
-		[Parameter(Mandatory)][string]$FilePath,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$FilePath,
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[AllowEmptyCollection()]
 		[string[]]$ArgumentList = @(),
+		[AllowNull()]
+		[AllowEmptyString()]
 		[string]$WorkingDirectory,
+		[ValidateNotNull()]
+		[AllowEmptyCollection()]
 		[hashtable]$Environment = @{},
+		[ValidateRange(1, 2147483647)]
 		[int]$TimeoutSeconds = 3600
 	)
 
@@ -1052,7 +1211,12 @@ function Invoke-CapturedProcess {
 
 function Get-TestResultAccounting {
 	[CmdletBinding()]
-	param([AllowEmptyString()][string]$Output)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Output
+	)
 
 	$lines = @($Output -split '\r?\n' | Where-Object { $_ -ne '' })
 	$counts = [ordered]@{
@@ -1088,8 +1252,13 @@ function Get-TestResultAccounting {
 
 function Write-CanonicalEvidenceAscii {
 	param(
-		[Parameter(Mandatory)][IO.Stream]$Stream,
-		[Parameter(Mandatory)][AllowEmptyString()][string]$Text
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[IO.Stream]$Stream,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Text
 	)
 
 	$bytes = [Text.Encoding]::ASCII.GetBytes($Text)
@@ -1098,11 +1267,17 @@ function Write-CanonicalEvidenceAscii {
 
 function Write-CanonicalEvidenceText {
 	param(
-		[Parameter(Mandatory)][IO.Stream]$Stream,
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[IO.Stream]$Stream,
 		[Parameter(Mandatory)]
 		[ValidateSet('K', 'P', 'S')]
+		[ValidateNotNullOrEmpty()]
 		[string]$Tag,
-		[Parameter(Mandatory)][AllowEmptyString()][string]$Text
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Text
 	)
 
 	$encoding = [Text.UTF8Encoding]::new($false, $true)
@@ -1114,8 +1289,13 @@ function Write-CanonicalEvidenceText {
 
 function Get-CanonicalRepositoryRelativePath {
 	param(
-		[Parameter(Mandatory)][string]$Path,
-		[Parameter(Mandatory)][string]$RepositoryRoot
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Path,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$RepositoryRoot
 	)
 
 	if (-not [IO.Path]::IsPathFullyQualified($Path)) {
@@ -1152,9 +1332,17 @@ function Get-CanonicalRepositoryRelativePath {
 
 function Write-CanonicalEvidenceValue {
 	param(
-		[Parameter(Mandatory)][IO.Stream]$Stream,
-		[Parameter()][AllowNull()][object]$Value,
-		[Parameter(Mandatory)][string]$RepositoryRoot
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[IO.Stream]$Stream,
+		[Parameter(Mandatory)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		[AllowEmptyCollection()]
+		[object]$Value,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$RepositoryRoot
 	)
 
 	if ($null -eq $Value) {
@@ -1268,8 +1456,12 @@ function Write-CanonicalEvidenceValue {
 function Get-EvidenceCanonicalDigest {
 	[CmdletBinding()]
 	param(
-		[Parameter(Mandatory)][object]$Document,
-		[Parameter(Mandatory)][string]$RepositoryRoot
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[object]$Document,
+		[Parameter(Mandatory)]
+		[ValidateNotNullOrEmpty()]
+		[string]$RepositoryRoot
 	)
 
 	$root = [IO.Path]::TrimEndingDirectorySeparator(
@@ -1313,7 +1505,12 @@ function Get-EvidenceCanonicalDigest {
 
 function Get-TextSha256 {
 	[CmdletBinding()]
-	param([AllowEmptyString()][string]$Text)
+	param(
+		[Parameter(Mandatory)]
+		[ValidateNotNull()]
+		[AllowEmptyString()]
+		[string]$Text
+	)
 
 	$bytes = [Text.UTF8Encoding]::new($false).GetBytes($Text)
 	$algorithm = [Security.Cryptography.SHA256]::Create()
