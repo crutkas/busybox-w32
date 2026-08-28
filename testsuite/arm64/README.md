@@ -64,6 +64,75 @@ limited to `pass`, `fail`, `blocked`, and `skipped`. The document reports exact
 totals and always identifies its authority as `diagnostic-only` with admission
 `not-evaluated`.
 
+### Canonical evidence digest
+
+The raw evidence JSON intentionally retains absolute observed paths, so its
+file SHA-256 is checkout-local and must not be published as a reproducible
+digest. The diagnostic also writes
+`<EvidencePath>.canonical-sha256.json`. This closed-schema sidecar names
+canonicalization `busybox-arm64-evidence-canonical-v1`, SHA-256, the canonical
+byte length, and the lowercase digest.
+
+The evidence JSON is written first. Any previous sidecar is removed, and the
+new digest is computed from a fresh parse of the exact JSON just emitted. Thus
+the documented auditor procedure and the publisher hash the same JSON value
+model, including arbitrary-size integers. A canonicalization or sidecar-write
+failure remains a nonzero diagnostic failure, leaves no stale digest, and does
+not suppress the underlying evidence document.
+
+The canonical byte stream starts with the ASCII scheme name followed by LF,
+then recursively frames the complete evidence document:
+
+- null is `N;`, booleans are `B0;` or `B1;`, and integers are `I`, their
+  invariant decimal representation, and `;`;
+- ordinary strings use `S<byte-count>:<strict-UTF-8-bytes>`, while object keys
+  use the otherwise identical `K` tag;
+- a fully qualified string scalar lexically beneath the repository root uses
+  `P<byte-count>:<strict-UTF-8-bytes>`, with the root removed and directory
+  separators changed to `/`; the repository root itself is `.`;
+- arrays use `A<count>[<framed-values>]`; objects use
+  `O<count>{<framed-key><framed-value>...}` with keys sorted by ordinal value.
+
+There is no BOM or trailing newline. Unsupported value types abort
+canonicalization. External paths and strings containing embedded paths remain
+byte-exact. Distinct `P` and `S` tags prevent a normalized path from colliding
+with an ordinary string, and length framing prevents field-boundary ambiguity.
+Only the checkout-root prefix is deliberately nonsemantic; record content,
+relative paths, array order, value types, and unknown keys all affect the
+digest.
+
+The versioned known-answer vector is the following two lines joined by one LF
+and no terminal newline:
+
+```text
+busybox-arm64-evidence-canonical-v1
+O3{K1:aP26:configs/mingw64a_defconfigK7:literalS26:configs/mingw64a_defconfigK1:zA6[N;B1;B0;I-2;I3;S1:x]}
+```
+
+It is 141 bytes and has SHA-256
+`a4f09935a9b7fde67c6669d4fbcfba649fbbf71d6919bada2956172ad63d480e`.
+The `a` value is an absolute repository path; `literal` contains the same
+repository-relative text as an ordinary string. Floating-point and other
+unspecified value types are rejected.
+
+An auditor recomputes the sidecar from the parsed document and the checkout
+root:
+
+```powershell
+Import-Module testsuite\arm64\Arm64Validation.psm1 -Force
+$document = Get-Content C:\evidence\busybox-arm64.json -Raw |
+  ConvertFrom-Json
+Get-EvidenceCanonicalDigest -Document $document `
+  -RepositoryRoot (Get-Location)
+```
+
+The source checks run the blocked diagnostic from two distinct working
+directories, require different raw JSON hashes but identical canonical
+digests, recompute both sidecars, and mutation-test record content, relative
+paths, extra keys, the path-versus-string type boundary, rejected numeric
+policy types, and `UInt64`/`BigInteger` JSON round trips. The digest is
+diagnostic integrity metadata only and has no admission authority.
+
 Architecture evidence is layered:
 
 1. .NET `RuntimeInformation` records the OS and diagnostic-process
@@ -119,7 +188,11 @@ The policy is closed-schema JSON:
 
 Actual system DLL entries must also be enumerated. Unknown keys, duplicate
 imports, duplicate canonical module paths, missing identities, and any
-expected-versus-observed difference fail closed.
+expected-versus-observed difference fail closed. `schemaVersion` must be the
+JSON integer `1`; identities, authority, imports, and module fields must be
+strings of the documented form; and `imports`, `delayImports`, and `modules`
+must be JSON arrays. Alternate scalar types are rejected before they can enter
+evidence as trusted policy values.
 
 ## Unmet gates
 

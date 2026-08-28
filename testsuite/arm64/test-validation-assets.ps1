@@ -697,6 +697,246 @@ Invoke-TestCase 'text evidence hashes UTF-8 deterministically' {
 		'UTF-8 SHA-256 differs'
 }
 
+Invoke-TestCase 'canonical evidence digest matches the versioned vector' {
+	$relativePath = 'configs/mingw64a_defconfig'
+	$fixture = [pscustomobject][ordered]@{
+		z = @($null, $true, $false, [int64]-2, [uint64]3, 'x')
+		a = Join-Path $repositoryRoot $relativePath
+		literal = $relativePath
+	}
+	$digest = Get-EvidenceCanonicalDigest `
+		-Document $fixture -RepositoryRoot $repositoryRoot
+	Assert-Equal 'busybox-arm64-evidence-canonical-v1' `
+		$digest.canonicalization 'Canonicalization identifier differs'
+	Assert-Equal 141 $digest.canonicalByteLength `
+		'Canonical vector byte length differs'
+	Assert-Equal `
+		'a4f09935a9b7fde67c6669d4fbcfba649fbbf71d6919bada2956172ad63d480e' `
+		$digest.sha256 'Canonical vector SHA-256 differs'
+	Assert-Throws {
+		Get-EvidenceCanonicalDigest -Document (
+			[pscustomobject]@{ unsupported = [double]1.5 }
+		) -RepositoryRoot $repositoryRoot
+	} 'unsupported floating-point canonical value'
+
+	$wideIntegerDocument = [pscustomobject]@{
+		value = [uint64]::MaxValue
+	}
+	$wideIntegerDigest = Get-EvidenceCanonicalDigest `
+		-Document $wideIntegerDocument -RepositoryRoot $repositoryRoot
+	$wideIntegerPublished = (
+		$wideIntegerDocument | ConvertTo-Json
+	) | ConvertFrom-Json
+	$wideIntegerRecomputed = Get-EvidenceCanonicalDigest `
+		-Document $wideIntegerPublished -RepositoryRoot $repositoryRoot
+	Assert-Equal $wideIntegerDigest.canonicalByteLength `
+		$wideIntegerRecomputed.canonicalByteLength `
+		'Wide-integer canonical byte length did not round trip'
+	Assert-Equal $wideIntegerDigest.sha256 `
+		$wideIntegerRecomputed.sha256 `
+		'Wide-integer canonical digest did not round trip'
+}
+
+Invoke-TestCase 'canonical evidence digest is stable across working directories' {
+	$tempRoot = Join-Path ([IO.Path]::GetTempPath()) (
+		'busybox-arm64-digest-' + [Guid]::NewGuid().ToString('N')
+	)
+	$documents = @()
+	$rawHashes = @()
+	$digests = @()
+	$roots = @(
+		(Join-Path $tempRoot 'root-a'),
+		(Join-Path $tempRoot 'root-b')
+	)
+	try {
+		foreach ($root in $roots) {
+			$arm64Path = Join-Path $root 'testsuite\arm64'
+			$configPath = Join-Path $root 'configs'
+			[void](New-Item -ItemType Directory -Path $arm64Path -Force)
+			[void](New-Item -ItemType Directory -Path $configPath -Force)
+			Copy-Item -LiteralPath (
+				Join-Path $PSScriptRoot 'Arm64Validation.psm1'
+			) -Destination $arm64Path
+			Copy-Item -LiteralPath (
+				Join-Path $PSScriptRoot 'validate-native.ps1'
+			) -Destination $arm64Path
+			Copy-Item -LiteralPath (
+				Join-Path $repositoryRoot 'configs\mingw64a_defconfig'
+			) -Destination $configPath
+
+			$evidencePath = Join-Path $root 'evidence.json'
+			$result = Invoke-CapturedProcess `
+				-FilePath ([Environment]::ProcessPath) `
+				-ArgumentList @(
+					'-NoLogo',
+					'-NoProfile',
+					'-File',
+					(Join-Path $arm64Path 'validate-native.ps1'),
+					'-EvidencePath',
+					$evidencePath
+				) `
+				-WorkingDirectory $root
+			Assert-Equal 1 $result.exitCode `
+				'Missing-prerequisite diagnostic exit differs'
+
+			$evidenceText = Get-Content -LiteralPath $evidencePath `
+				-Raw -Encoding UTF8
+			$document = $evidenceText | ConvertFrom-Json
+			$digest = Get-Content -LiteralPath (
+				"$evidencePath.canonical-sha256.json"
+			) -Raw -Encoding UTF8 | ConvertFrom-Json
+			Assert-ClosedKeys $digest @(
+				'canonicalByteLength',
+				'canonicalization',
+				'hashAlgorithm',
+				'schemaVersion',
+				'sha256'
+			) 'canonical digest sidecar'
+			$recomputed = Get-EvidenceCanonicalDigest `
+				-Document $document -RepositoryRoot $root
+			Assert-Equal $recomputed.canonicalization `
+				$digest.canonicalization `
+				'Canonicalization identifier differs'
+			Assert-Equal $recomputed.canonicalByteLength `
+				$digest.canonicalByteLength `
+				'Canonical byte length differs'
+			Assert-Equal $recomputed.sha256 $digest.sha256 `
+				'Canonical digest does not recompute'
+
+			$documents += ,$document
+			$rawHashes += Get-TextSha256 -Text $evidenceText
+			$digests += $digest.sha256
+		}
+
+		Assert-True ($rawHashes[0] -cne $rawHashes[1]) `
+			'Raw evidence unexpectedly hid checkout-local paths'
+		Assert-Equal $digests[0] $digests[1] `
+			'Canonical digest changed with the working directory'
+
+		$contentMutation = (
+			$documents[0] | ConvertTo-Json -Depth 20
+		) | ConvertFrom-Json
+		$contentMutation.records[0].detail += ' mutated'
+		$contentDigest = Get-EvidenceCanonicalDigest `
+			-Document $contentMutation -RepositoryRoot $roots[0]
+		Assert-True ($contentDigest.sha256 -cne $digests[0]) `
+			'Record-content mutation did not change canonical digest'
+
+		$pathMutation = (
+			$documents[0] | ConvertTo-Json -Depth 20
+		) | ConvertFrom-Json
+		$pathMutation.records[0].observed.path = Join-Path `
+			$roots[0] 'configs\other_defconfig'
+		$pathDigest = Get-EvidenceCanonicalDigest `
+			-Document $pathMutation -RepositoryRoot $roots[0]
+		Assert-True ($pathDigest.sha256 -cne $digests[0]) `
+			'Repository-relative path mutation did not change digest'
+
+		$stringMutation = (
+			$documents[0] | ConvertTo-Json -Depth 20
+		) | ConvertFrom-Json
+		$stringMutation.records[0].observed.path =
+			'configs/mingw64a_defconfig'
+		$stringDigest = Get-EvidenceCanonicalDigest `
+			-Document $stringMutation -RepositoryRoot $roots[0]
+		Assert-True ($stringDigest.sha256 -cne $digests[0]) `
+			'Path and ordinary-string encodings collided'
+
+		$extraKeyMutation = (
+			$documents[0] | ConvertTo-Json -Depth 20
+		) | ConvertFrom-Json
+		$extraKeyMutation | Add-Member -NotePropertyName unexpected `
+			-NotePropertyValue 'mutation'
+		$extraKeyDigest = Get-EvidenceCanonicalDigest `
+			-Document $extraKeyMutation -RepositoryRoot $roots[0]
+		Assert-True ($extraKeyDigest.sha256 -cne $digests[0]) `
+			'Extra document key did not change canonical digest'
+
+		$invalidPolicyPath = Join-Path $roots[0] 'invalid-policy.json'
+		$invalidPolicyJson = @'
+{
+  "schemaVersion": 1.0,
+  "authority": "external-independent-review",
+  "subject": {
+    "canonicalPath": "C:\\candidate\\busybox.exe",
+    "volumeSerial": "0123ABCD",
+    "fileId": "00000000000000000000000000000001",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "imports": ["KERNEL32.dll"],
+  "delayImports": [],
+  "modules": [
+    {
+      "canonicalPath": "C:\\candidate\\busybox.exe",
+      "volumeSerial": "0123ABCD",
+      "fileId": "00000000000000000000000000000001",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "peMachine": "0xAA64"
+    }
+  ]
+}
+'@
+		$validPolicyPath = Join-Path $roots[0] 'valid-policy.json'
+		[IO.File]::WriteAllText(
+			$validPolicyPath,
+			$invalidPolicyJson.Replace(
+				'"schemaVersion": 1.0',
+				'"schemaVersion": 1'
+			),
+			[Text.UTF8Encoding]::new($false)
+		)
+		$validPolicy = Read-ModulePolicy -Path $validPolicyPath
+		Assert-Equal 1 $validPolicy.schemaVersion `
+			'Valid typed policy schema differs'
+		Assert-Equal 1 @($validPolicy.modules).Count `
+			'Valid typed policy module count differs'
+
+		[IO.File]::WriteAllText(
+			$invalidPolicyPath,
+			$invalidPolicyJson,
+			[Text.UTF8Encoding]::new($false)
+		)
+		$invalidEvidencePath = Join-Path $roots[0] `
+			'invalid-policy-evidence.json'
+		$invalidResult = Invoke-CapturedProcess `
+			-FilePath ([Environment]::ProcessPath) `
+			-ArgumentList @(
+				'-NoLogo',
+				'-NoProfile',
+				'-File',
+				(Join-Path $roots[0] `
+					'testsuite\arm64\validate-native.ps1'),
+				'-ModulePolicyPath',
+				$invalidPolicyPath,
+				'-EvidencePath',
+				$invalidEvidencePath
+			) `
+			-WorkingDirectory $roots[0]
+		Assert-Equal 1 $invalidResult.exitCode `
+			'Invalid-policy diagnostic exit differs'
+		$invalidDocument = Get-Content -LiteralPath `
+			$invalidEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
+		$policyRecord = @($invalidDocument.records |
+			Where-Object id -eq 'prerequisite.module-policy')
+		Assert-Equal 1 $policyRecord.Count `
+			'Invalid-policy evidence record count differs'
+		Assert-Equal 'fail' $policyRecord[0].status `
+			'Invalid numeric policy schema did not fail closed'
+		$invalidDigest = Get-Content -LiteralPath (
+			"$invalidEvidencePath.canonical-sha256.json"
+		) -Raw -Encoding UTF8 | ConvertFrom-Json
+		$invalidRecomputed = Get-EvidenceCanonicalDigest `
+			-Document $invalidDocument -RepositoryRoot $roots[0]
+		Assert-Equal $invalidRecomputed.sha256 `
+			$invalidDigest.sha256 `
+			'Rejected-policy evidence digest does not recompute'
+	} finally {
+		if (Test-Path -LiteralPath $tempRoot -PathType Container) {
+			Remove-Item -LiteralPath $tempRoot -Recurse -Force
+		}
+	}
+}
+
 Invoke-TestCase 'file identity uses filesystem path, volume and file ID' {
 	$identity = Get-FileIdentity -Path (
 		Join-Path $repositoryRoot 'README.md'

@@ -657,6 +657,70 @@ function Assert-ClosedKeys {
 	}
 }
 
+function Assert-ModulePolicyString {
+	param(
+		[Parameter(Mandatory)][AllowNull()][object]$Value,
+		[Parameter(Mandatory)][string]$Scope,
+		[string]$Pattern
+	)
+
+	if ($Value -isnot [string] -or
+	    [string]::IsNullOrWhiteSpace($Value)) {
+		throw [IO.InvalidDataException]::new(
+			"$Scope must be a nonempty string"
+		)
+	}
+	if (-not [string]::IsNullOrEmpty($Pattern) -and
+	    $Value -cnotmatch $Pattern) {
+		throw [IO.InvalidDataException]::new(
+			"$Scope has an invalid format"
+		)
+	}
+}
+
+function Assert-ModulePolicyIdentity {
+	param(
+		[Parameter(Mandatory)][AllowNull()][object]$Identity,
+		[Parameter(Mandatory)][string]$Scope,
+		[switch]$IncludePeMachine
+	)
+
+	if ($Identity -isnot [Management.Automation.PSCustomObject]) {
+		throw [IO.InvalidDataException]::new(
+			"$Scope must be a JSON object"
+		)
+	}
+	$keys = @(
+		'canonicalPath',
+		'fileId',
+		'sha256',
+		'volumeSerial'
+	)
+	if ($IncludePeMachine) {
+		$keys += 'peMachine'
+	}
+	Assert-ClosedKeys $Identity $keys $Scope
+	Assert-ModulePolicyString $Identity.canonicalPath `
+		"$Scope canonicalPath"
+	if (-not [IO.Path]::IsPathFullyQualified(
+		$Identity.canonicalPath
+	)) {
+		throw [IO.InvalidDataException]::new(
+			"$Scope canonicalPath must be fully qualified"
+		)
+	}
+	Assert-ModulePolicyString $Identity.volumeSerial `
+		"$Scope volumeSerial" '^[0-9A-F]+$'
+	Assert-ModulePolicyString $Identity.fileId `
+		"$Scope fileId" '^(?:[0-9A-F]{16}|[0-9A-F]{32})$'
+	Assert-ModulePolicyString $Identity.sha256 `
+		"$Scope sha256" '^[0-9a-f]{64}$'
+	if ($IncludePeMachine) {
+		Assert-ModulePolicyString $Identity.peMachine `
+			"$Scope peMachine" '^0xAA64$'
+	}
+}
+
 function Read-ModulePolicy {
 	[CmdletBinding()]
 	param([Parameter(Mandatory)][string]$Path)
@@ -672,35 +736,54 @@ function Read-ModulePolicy {
 		'schemaVersion',
 		'subject'
 	) 'module policy'
-	if ($policy.schemaVersion -ne 1) {
+	$schemaType = if ($null -eq $policy.schemaVersion) {
+		[TypeCode]::Empty
+	} else {
+		[Type]::GetTypeCode($policy.schemaVersion.GetType())
+	}
+	if ($schemaType -notin @(
+		[TypeCode]::SByte,
+		[TypeCode]::Byte,
+		[TypeCode]::Int16,
+		[TypeCode]::UInt16,
+		[TypeCode]::Int32,
+		[TypeCode]::UInt32,
+		[TypeCode]::Int64,
+		[TypeCode]::UInt64
+	) -or $policy.schemaVersion -ne 1) {
 		throw [IO.InvalidDataException]::new(
 			"Unsupported module policy schema $($policy.schemaVersion)"
 		)
 	}
-	if ($policy.authority -ne 'external-independent-review') {
+	if ($policy.authority -isnot [string] -or
+	    $policy.authority -cne 'external-independent-review') {
 		throw [IO.InvalidDataException]::new(
 			'Module policy authority must be external-independent-review'
 		)
 	}
-	Assert-ClosedKeys $policy.subject @(
-		'canonicalPath',
-		'fileId',
-		'sha256',
-		'volumeSerial'
-	) 'module policy subject'
+	Assert-ModulePolicyIdentity $policy.subject 'module policy subject'
 
-	foreach ($module in @($policy.modules)) {
-		Assert-ClosedKeys $module @(
-			'canonicalPath',
-			'fileId',
-			'peMachine',
-			'sha256',
-			'volumeSerial'
-		) 'module policy entry'
+	if ($policy.modules -isnot [Array]) {
+		throw [IO.InvalidDataException]::new(
+			'Module policy modules must be a JSON array'
+		)
+	}
+	foreach ($module in $policy.modules) {
+		Assert-ModulePolicyIdentity $module 'module policy entry' `
+			-IncludePeMachine
 	}
 
 	foreach ($scope in @('imports', 'delayImports')) {
+		if ($policy.$scope -isnot [Array]) {
+			throw [IO.InvalidDataException]::new(
+				"Module policy $scope must be a JSON array"
+			)
+		}
 		$values = @($policy.$scope)
+		foreach ($value in $values) {
+			Assert-ModulePolicyString $value `
+				"module policy $scope entry"
+		}
 		$unique = @($values | Sort-Object -Unique)
 		if ($values.Count -ne $unique.Count) {
 			throw [IO.InvalidDataException]::new(
@@ -1003,6 +1086,231 @@ function Get-TestResultAccounting {
 	return [pscustomobject]$counts
 }
 
+function Write-CanonicalEvidenceAscii {
+	param(
+		[Parameter(Mandatory)][IO.Stream]$Stream,
+		[Parameter(Mandatory)][AllowEmptyString()][string]$Text
+	)
+
+	$bytes = [Text.Encoding]::ASCII.GetBytes($Text)
+	$Stream.Write($bytes, 0, $bytes.Length)
+}
+
+function Write-CanonicalEvidenceText {
+	param(
+		[Parameter(Mandatory)][IO.Stream]$Stream,
+		[Parameter(Mandatory)]
+		[ValidateSet('K', 'P', 'S')]
+		[string]$Tag,
+		[Parameter(Mandatory)][AllowEmptyString()][string]$Text
+	)
+
+	$encoding = [Text.UTF8Encoding]::new($false, $true)
+	$bytes = $encoding.GetBytes($Text)
+	Write-CanonicalEvidenceAscii -Stream $Stream `
+		-Text ("{0}{1}:" -f $Tag, $bytes.Length)
+	$Stream.Write($bytes, 0, $bytes.Length)
+}
+
+function Get-CanonicalRepositoryRelativePath {
+	param(
+		[Parameter(Mandatory)][string]$Path,
+		[Parameter(Mandatory)][string]$RepositoryRoot
+	)
+
+	if (-not [IO.Path]::IsPathFullyQualified($Path)) {
+		return $null
+	}
+	try {
+		$fullPath = [IO.Path]::GetFullPath($Path)
+	} catch {
+		return $null
+	}
+	$comparison = if ([OperatingSystem]::IsWindows()) {
+		[StringComparison]::OrdinalIgnoreCase
+	} else {
+		[StringComparison]::Ordinal
+	}
+	if ($fullPath.Equals($RepositoryRoot, $comparison)) {
+		return '.'
+	}
+	$rootPrefix = $RepositoryRoot
+	if (-not $rootPrefix.EndsWith(
+		[IO.Path]::DirectorySeparatorChar
+	)) {
+		$rootPrefix += [IO.Path]::DirectorySeparatorChar
+	}
+	if (-not $fullPath.StartsWith($rootPrefix, $comparison)) {
+		return $null
+	}
+	$relativePath = [IO.Path]::GetRelativePath(
+		$RepositoryRoot,
+		$fullPath
+	)
+	return $relativePath.Replace('\', '/')
+}
+
+function Write-CanonicalEvidenceValue {
+	param(
+		[Parameter(Mandatory)][IO.Stream]$Stream,
+		[Parameter()][AllowNull()][object]$Value,
+		[Parameter(Mandatory)][string]$RepositoryRoot
+	)
+
+	if ($null -eq $Value) {
+		Write-CanonicalEvidenceAscii -Stream $Stream -Text 'N;'
+		return
+	}
+	if ($Value -is [string]) {
+		$relativePath = Get-CanonicalRepositoryRelativePath `
+			-Path $Value -RepositoryRoot $RepositoryRoot
+		if ($null -ne $relativePath) {
+			Write-CanonicalEvidenceText -Stream $Stream `
+				-Tag 'P' -Text $relativePath
+		} else {
+			Write-CanonicalEvidenceText -Stream $Stream `
+				-Tag 'S' -Text $Value
+		}
+		return
+	}
+	if ($Value -is [bool]) {
+		Write-CanonicalEvidenceAscii -Stream $Stream `
+			-Text $(if ($Value) { 'B1;' } else { 'B0;' })
+		return
+	}
+
+	$typeCode = [Type]::GetTypeCode($Value.GetType())
+	if ($Value -is [Numerics.BigInteger] -or $typeCode -in @(
+		[TypeCode]::SByte,
+		[TypeCode]::Byte,
+		[TypeCode]::Int16,
+		[TypeCode]::UInt16,
+		[TypeCode]::Int32,
+		[TypeCode]::UInt32,
+		[TypeCode]::Int64,
+		[TypeCode]::UInt64
+	)) {
+		$text = ([IFormattable]$Value).ToString(
+			$null,
+			[Globalization.CultureInfo]::InvariantCulture
+		)
+		Write-CanonicalEvidenceAscii -Stream $Stream `
+			-Text "I$text;"
+		return
+	}
+
+	$entries = [Collections.Generic.Dictionary[string, object]]::new(
+		[StringComparer]::Ordinal
+	)
+	if ($Value -is [Collections.IDictionary]) {
+		foreach ($key in $Value.Keys) {
+			if ($key -isnot [string]) {
+				throw [IO.InvalidDataException]::new(
+					'Canonical evidence object keys must be strings'
+				)
+			}
+			if ($entries.ContainsKey($key)) {
+				throw [IO.InvalidDataException]::new(
+					"Canonical evidence object repeats key '$key'"
+				)
+			}
+			$entries.Add($key, $Value[$key])
+		}
+	} elseif ($Value -is [Management.Automation.PSCustomObject]) {
+		foreach ($property in $Value.PSObject.Properties) {
+			if ($property.MemberType -ne 'NoteProperty') {
+				throw [IO.InvalidDataException]::new(
+					"Canonical evidence cannot read member " +
+					"'$($property.Name)' of type " +
+					"'$($property.MemberType)'"
+				)
+			}
+			if ($entries.ContainsKey($property.Name)) {
+				throw [IO.InvalidDataException]::new(
+					"Canonical evidence object repeats key " +
+					"'$($property.Name)'"
+				)
+			}
+			$entries.Add($property.Name, $property.Value)
+		}
+	} elseif ($Value -is [Collections.IEnumerable]) {
+		$items = @($Value)
+		Write-CanonicalEvidenceAscii -Stream $Stream `
+			-Text "A$($items.Count)["
+		foreach ($item in $items) {
+			Write-CanonicalEvidenceValue -Stream $Stream `
+				-Value $item -RepositoryRoot $RepositoryRoot
+		}
+		Write-CanonicalEvidenceAscii -Stream $Stream -Text ']'
+		return
+	} else {
+		throw [IO.InvalidDataException]::new(
+			"Canonical evidence does not support type " +
+			"'$($Value.GetType().FullName)'"
+		)
+	}
+
+	$keys = [Collections.Generic.List[string]]::new()
+	foreach ($key in $entries.Keys) {
+		$keys.Add($key)
+	}
+	$keys.Sort([StringComparer]::Ordinal)
+	Write-CanonicalEvidenceAscii -Stream $Stream `
+		-Text "O$($keys.Count){"
+	foreach ($key in $keys) {
+		Write-CanonicalEvidenceText -Stream $Stream -Tag 'K' -Text $key
+		Write-CanonicalEvidenceValue -Stream $Stream `
+			-Value $entries[$key] -RepositoryRoot $RepositoryRoot
+	}
+	Write-CanonicalEvidenceAscii -Stream $Stream -Text '}'
+}
+
+function Get-EvidenceCanonicalDigest {
+	[CmdletBinding()]
+	param(
+		[Parameter(Mandatory)][object]$Document,
+		[Parameter(Mandatory)][string]$RepositoryRoot
+	)
+
+	$root = [IO.Path]::TrimEndingDirectorySeparator(
+		[IO.Path]::GetFullPath($RepositoryRoot)
+	)
+	if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+		throw [IO.DirectoryNotFoundException]::new(
+			"Repository root '$root' does not exist"
+		)
+	}
+
+	$scheme = 'busybox-arm64-evidence-canonical-v1'
+	$stream = [IO.MemoryStream]::new()
+	try {
+		Write-CanonicalEvidenceAscii -Stream $stream `
+			-Text "$scheme`n"
+		Write-CanonicalEvidenceValue -Stream $stream `
+			-Value $Document -RepositoryRoot $root
+		$bytes = $stream.ToArray()
+	} finally {
+		$stream.Dispose()
+	}
+
+	$algorithm = [Security.Cryptography.SHA256]::Create()
+	try {
+		$hash = $algorithm.ComputeHash($bytes)
+		$sha256 = ($hash | ForEach-Object {
+			$_.ToString('x2')
+		}) -join ''
+	} finally {
+		$algorithm.Dispose()
+	}
+	return [pscustomobject][ordered]@{
+		schemaVersion = 1
+		canonicalization = $scheme
+		hashAlgorithm = 'SHA-256'
+		canonicalByteLength = [long]$bytes.LongLength
+		sha256 = $sha256
+	}
+}
+
 function Get-TextSha256 {
 	[CmdletBinding()]
 	param([AllowEmptyString()][string]$Text)
@@ -1031,6 +1339,7 @@ Export-ModuleMember -Function @(
 	'Get-PeImageInfoFromBytes',
 	'Get-ProcessModuleSnapshot',
 	'Get-TestResultAccounting',
+	'Get-EvidenceCanonicalDigest',
 	'Get-TextSha256',
 	'Get-UnameSourcePolicyFailures',
 	'Invoke-CapturedProcess',

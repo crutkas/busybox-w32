@@ -144,6 +144,7 @@ $repositoryRoot = [IO.Path]::GetFullPath(
 $testsuitePath = Join-Path $repositoryRoot 'testsuite'
 $configPath = Join-Path $repositoryRoot 'configs\mingw64a_defconfig'
 $evidenceFullPath = [IO.Path]::GetFullPath($EvidencePath)
+$canonicalDigestFullPath = "$evidenceFullPath.canonical-sha256.json"
 $logPrefix = [IO.Path]::Combine(
 	[IO.Path]::GetDirectoryName($evidenceFullPath),
 	[IO.Path]::GetFileNameWithoutExtension($evidenceFullPath)
@@ -873,8 +874,25 @@ Assert-ClosedKeys $document @(
 ) 'evidence document'
 
 $json = $document | ConvertTo-Json -Depth 20
+if (Test-Path -LiteralPath $canonicalDigestFullPath -PathType Leaf) {
+	Remove-Item -LiteralPath $canonicalDigestFullPath -Force
+}
 [void](Write-Utf8File $evidenceFullPath ($json + "`n"))
 $json
+
+$publishedDocument = $json | ConvertFrom-Json -Depth 20
+$canonicalDigest = Get-EvidenceCanonicalDigest `
+	-Document $publishedDocument -RepositoryRoot $repositoryRoot
+Assert-ClosedKeys $canonicalDigest @(
+	'canonicalByteLength',
+	'canonicalization',
+	'hashAlgorithm',
+	'schemaVersion',
+	'sha256'
+) 'canonical evidence digest'
+$canonicalDigestJson = $canonicalDigest | ConvertTo-Json
+[void](Write-Utf8File $canonicalDigestFullPath `
+	($canonicalDigestJson + "`n"))
 
 if ($executionStatus -ne 'complete') {
 	exit 1
