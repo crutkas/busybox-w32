@@ -1,0 +1,32 @@
+#!/bin/sh
+
+. ./testing.sh
+
+# APPLETS: awk cat cp diff find grep mkdir mv rm sed sh sort tr unzip xargs
+
+testing "sh, mkdir, cat, cp, mv and rm" \
+	"rm -rf git-critical-files; sh -c 'mkdir -p git-critical-files/source && printf payload >git-critical-files/source/input && cp git-critical-files/source/input git-critical-files/copy && mv git-critical-files/copy git-critical-files/moved && cat git-critical-files/moved && rm -rf git-critical-files && test ! -e git-critical-files && echo removed'" \
+	"payloadremoved\n" \
+	"" ""
+
+testing "sort, tr, sed, grep and awk" \
+	"printf 'beta\nalpha\n' | sort | tr a-z A-Z | sed 's/ALPHA/first/' | grep -v BETA | awk '{ print \$1 }'" \
+	"first\n" \
+	"" ""
+
+testing "find and xargs" \
+	"rm -rf git-critical-find; mkdir -p git-critical-find && printf 'one\n' >git-critical-find/1.txt && printf 'two\n' >git-critical-find/2.txt && find git-critical-find -name '*.txt' -print | sort | xargs cat; rc=\$?; rm -rf git-critical-find; (exit \$rc)" \
+	"one\ntwo\n" \
+	"" ""
+
+testing "diff" \
+	"printf same >git-critical-a && cp git-critical-a git-critical-b && diff git-critical-a git-critical-b; echo \$?; printf changed >git-critical-b && diff git-critical-a git-critical-b >/dev/null; echo \$?; rm -f git-critical-a git-critical-b" \
+	"0\n1\n" \
+	"" ""
+
+testing "unzip a stored file" \
+	"rm -rf git-critical-zip; mkdir git-critical-zip && (cd git-critical-zip && printf '\120\113\003\004\024\000\000\000\000\000\000\000\041\120\376\151\261\141\010\000\000\000\010\000\000\000\006\000\000\000\160\141\143\153\145\144\141\162\143\150\151\166\145\144\120\113\001\002\024\000\024\000\000\000\000\000\000\000\041\120\376\151\261\141\010\000\000\000\010\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\160\141\143\153\145\144\120\113\005\006\000\000\000\000\001\000\001\000\064\000\000\000\054\000\000\000\000\000' >archive.zip && unzip -q archive.zip && cat packed); rc=\$?; rm -rf git-critical-zip; (exit \$rc)" \
+	"archived" \
+	"" ""
+
+exit $FAILCOUNT
