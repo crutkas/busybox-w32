@@ -10,6 +10,13 @@ to fork `main` commit
 `37fb55f5335e63c9f14c44208ed08a6e9aad4f91`). No native ARM64 execution was
 performed when these diagnostics were added.
 
+Scope figures must name their comparison. The whole successor PR changes the
+base tree from 3,136 to 3,141 entries: five validation files are added, with no
+base file modified or removed. The parameter-contract delta from
+`0980fbea4aa1623097b6586532fae67811784a1c` to
+`6e0a7bd8ddf7f5a66a4a08b308b8687d25e09942` keeps 3,141 entries and modifies
+four validation files, with no addition or removal.
+
 ## Source checks
 
 Run the source-only checks with PowerShell 7:
@@ -33,37 +40,63 @@ These checks inspect source policy only. They are not build or runtime evidence.
 
 ### PowerShell parameter contracts
 
-The parameter sweep ranks contracts by trust boundary:
+The same-commit specification manifest declares six exception categories by
+trust boundary, plus a reject-null-and-empty default:
 
-1. The manually supplied candidate and module-policy paths deliberately accept
-   null and empty strings so the diagnostic records them as blocked. The
-   evidence output path, executable paths, repository roots, record IDs, and
-   schema labels reject null and empty values with
-   `ValidateNotNullOrEmpty`.
-2. Candidate PE byte arrays accept an empty collection so a zero-byte file
-   reaches the structural parser and produces a field-specific failure; null
-   byte arrays are rejected. Empty section and module collections likewise
-   reach structural or exact-set comparison, while null collections do not.
-3. Source/config text, captured output, and file content accept an empty string
-   so missing content is evaluated or recorded; a true null string is rejected.
-   Optional environment observations accept both because absence is itself
-   evidence that the native-environment policy fails.
-4. The canonical value writer accepts JSON null, empty strings, and empty
-   arrays as distinct framed values. The outer evidence document and
-   repository root reject absence. Policy-validation helpers admit null and
-   empty external values only far enough to issue their explicit schema/type
-   rejection instead of failing incidentally in PowerShell binding.
+1. Null-and-empty strings are both allowed for manually supplied candidate and
+   module-policy paths so absence is recorded as blocked, for optional
+   environment observations so absence becomes policy evidence, and for
+   optional pattern/working-directory values.
+2. Empty strings but not true null strings are allowed for source/config text,
+   captured output, file content, canonical text frames, and an empty
+   repository-path candidate. This lets missing content reach its structural
+   or accounting check.
+3. Null, empty-string, and empty-collection objects are allowed for canonical
+   JSON values, externally parsed policy values awaiting explicit type checks,
+   evidence expected/observed fields, and equality assertions.
+4. Empty collections but not null collections are allowed for candidate PE
+   bytes, section/module sets, expected-key/failure lists, and an empty process
+   environment. A zero-byte file or empty set therefore reaches its structural
+   or exact-set check.
+5. The captured-process argument list also allows empty-string elements because
+   those are valid command arguments, as well as an empty list, but rejects a
+   null list.
+6. Strongly typed stream, process, and executable script-block references
+   reject null; string/collection emptiness is not their value domain.
+7. Every reference parameter outside those six exception categories uses the
+   default rejection of null and empty values. This includes evidence and
+   executable paths, repository roots, record IDs/statuses, schema labels,
+   outer evidence objects, and mutation buffers that require bytes.
 
 `ValidateNotNullOrEmpty` remains on parameters for which both cases are
-invalid; the sweep does not make deliberate rejection permissive. The source
-test extracts each exact declaration and exercises it in an isolated advanced
-function. It uses `Language.NullString` to distinguish a true null string from
-an empty string (ordinary PowerShell `$null` converts to empty during string
-binding), creates a typed zero-length array for collection checks, requires
-allowed cases to reach a sentinel body, and requires rejected cases to be a
+invalid; the sweep does not make deliberate rejection permissive.
+
+This is a conformance test against a hand-maintained specification list in the
+same commit. It mechanically catches declaration/list drift, a missing
+inventory entry, null/empty conflation, and false `Mandatory` claims. It does
+not independently derive the correct contract, and a coordinated change to a
+declaration and its category list can pass. The trust-boundary rationale above
+therefore still requires independent review.
+
+The test extracts every `ParamBlockAst`, including anonymous script blocks, and
+exercises each exact declaration in an isolated advanced function. It uses
+`Language.NullString` to distinguish a true null string from an empty string
+(ordinary PowerShell `$null` converts to empty during string binding), creates
+a typed zero-length array for collection checks, requires allowed cases to
+reach a sentinel body, and requires rejected cases to be a
 `ParameterBindingValidationException` that names the parameter and the
-null/empty reason. This prevents an unrelated function-body exception from
-satisfying a contract test.
+null/empty reason. It also reads the actual `Mandatory` attribute value and
+probes omission; required parameters must fail with
+`MissingMandatoryParameter`. These constraints prevent an unrelated
+function-body exception or `Mandatory=$false` from satisfying the test.
+
+The parameter sweep intentionally made five inputs caller-visible mandatory:
+`Get-TestResultAccounting::Output`, `Get-TextSha256::Text`,
+`Write-CanonicalEvidenceValue::Value`, and
+`Get-NativeEnvironmentPolicyFailures::ProcessorArchitecture` plus
+`ProcessorArchitew6432`. All repository call sites already supply them, and
+behavior/digests are unchanged, but an external caller that omitted one now
+receives a mandatory-parameter binding error.
 
 ## Dormant native diagnostic
 

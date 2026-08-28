@@ -352,6 +352,8 @@ $nativeScriptText = Get-Content `
 	-Raw -Encoding UTF8
 
 Invoke-TestCase 'parameter contracts distinguish null empty and empty collections' {
+	# This same-commit manifest declares policy; probes enforce conformance
+	# but cannot independently derive whether a category is correct.
 	$allowBothStrings = @(
 		'Arm64Validation.psm1::Assert-ModulePolicyString::Pattern',
 		'Arm64Validation.psm1::Get-NativeEnvironmentPolicyFailures::ProcessorArchitecture',
