@@ -4,9 +4,10 @@ SUBLEVEL = 0
 EXTRAVERSION = .git
 NAME = Unnamed
 
-# Colon is used as a separator in makefiles.  Strip any drive prefix
-# from the current directory to avoid confusion.
+# Native MinGW Make understands drive prefixes.  Older make variants do not.
+ifeq ($(findstring mingw32,$(MAKE_HOST)),)
 CURDIR := $(lastword $(subst :, ,$(CURDIR)))
+endif
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
@@ -92,9 +93,17 @@ ifeq ($(KBUILD_SRC),)
 
 # OK, Make called in directory where kernel src resides
 # Do we want to locate output files in a separate directory?
+ifneq ($(findstring mingw32,$(MAKE_HOST)),)
+  KBUILD_OUTPUT := $(value KBUILD_OUTPUT)
+endif
 ifdef O
   ifeq ("$(origin O)", "command line")
-    KBUILD_OUTPUT := $(O)
+    ifneq ($(findstring mingw32,$(MAKE_HOST)),)
+      # Keep '$' in native Windows UNC shares (for example C$) literal.
+      KBUILD_OUTPUT := $(value O)
+    else
+      KBUILD_OUTPUT := $(O)
+    endif
   endif
 endif
 
@@ -106,16 +115,20 @@ ifneq ($(KBUILD_OUTPUT),)
 # Invoke a second make in the output directory, passing relevant variables
 # check that the output directory actually exists
 saved-output := $(KBUILD_OUTPUT)
-KBUILD_OUTPUT := $(shell cd $(KBUILD_OUTPUT) && /bin/pwd)
+ifneq ($(findstring mingw32,$(MAKE_HOST)),)
+KBUILD_OUTPUT := $(value KBUILD_OUTPUT)
+else
+KBUILD_OUTPUT := $(shell cd '$(KBUILD_OUTPUT)' && /bin/pwd)
+endif
 $(if $(KBUILD_OUTPUT),, \
      $(error output directory "$(saved-output)" does not exist))
 
 PHONY += $(MAKECMDGOALS)
 
 $(filter-out _all,$(MAKECMDGOALS)) _all:
-	$(if $(KBUILD_VERBOSE:1=),@)$(MAKE) -C $(KBUILD_OUTPUT) \
-	KBUILD_SRC=$(CURDIR) \
-	KBUILD_EXTMOD="$(KBUILD_EXTMOD)" -f $(CURDIR)/Makefile $@
+	$(if $(KBUILD_VERBOSE:1=),@)$(MAKE) -C '$(KBUILD_OUTPUT)' \
+	KBUILD_SRC='$(CURDIR)' \
+	KBUILD_EXTMOD='$(subst $$,$$$$,$(KBUILD_EXTMOD))' -f '$(CURDIR)/Makefile' $@
 
 # Leave processing to above invocation of make
 skip-makefile := 1
@@ -134,7 +147,7 @@ else
 _all: modules
 endif
 
-srctree		:= $(if $(KBUILD_SRC),$(KBUILD_SRC),$(CURDIR))
+srctree		:= $(if $(value KBUILD_SRC),$(value KBUILD_SRC),$(CURDIR))
 TOPDIR		:= $(srctree)
 # FIXME - TOPDIR is obsolete, use srctree/objtree
 objtree		:= $(CURDIR)
@@ -439,7 +452,7 @@ scripts/basic/%: scripts_basic ;
 # This target generates Kbuild's and Config.in's from *.c files
 PHONY += gen_build_files
 gen_build_files: $(wildcard $(srctree)/*/*.c) $(wildcard $(srctree)/*/*/*.c) $(wildcard $(srctree)/embed/*)
-	$(Q)$(srctree)/scripts/gen_build_files.sh $(srctree) $(objtree)
+	$(Q)$(CONFIG_SHELL) '$(srctree)/scripts/gen_build_files.sh' '$(srctree)' '$(objtree)'
 
 # bbox: we have helpers in applets/
 # we depend on scripts_basic, since scripts/basic/fixdep
@@ -457,7 +470,7 @@ PHONY += outputmakefile
 outputmakefile:
 ifneq ($(KBUILD_SRC),)
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/mkmakefile \
-	    $(srctree) $(objtree) $(VERSION) $(PATCHLEVEL)
+	    '$(srctree)' '$(objtree)' $(VERSION) $(PATCHLEVEL)
 endif
 
 # To make sure we do not include .config for any of the *config targets
@@ -888,13 +901,15 @@ PHONY += prepare-all
 prepare3: .kernelrelease
 ifneq ($(KBUILD_SRC),)
 	@echo '  Using $(srctree) as source for busybox'
-	$(Q)if [ -f $(srctree)/.config ]; then \
+	$(Q)if [ -f '$(srctree)/.config' ]; then \
 		echo "  $(srctree) is not clean, please run 'make mrproper'";\
 		echo "  in the '$(srctree)' directory.";\
 		/bin/false; \
 	fi;
-	$(Q)if [ ! -d include2 ]; then mkdir -p include2; fi;
-	$(Q)ln -fsn $(srctree)/include/asm-$(ARCH) include2/asm
+	$(Q)if [ -d '$(srctree)/include/asm-$(ARCH)' ]; then \
+		mkdir -p include2 && \
+		ln -fsn '$(srctree)/include/asm-$(ARCH)' include2/asm; \
+	fi
 endif
 
 # prepare2 creates a makefile if using a separate output directory
@@ -1085,11 +1100,14 @@ MRPROPER_FILES += .config .config.old include/asm .version .old_version \
 #
 clean: rm-dirs  := $(CLEAN_DIRS)
 clean: rm-files := $(CLEAN_FILES)
-clean-dirs      := $(addprefix _clean_,$(srctree) $(busybox-alldirs))
+clean-dirs      := _clean_srctree $(addprefix _clean_,$(busybox-alldirs))
 
 PHONY += $(clean-dirs) clean archclean
-$(clean-dirs):
-	$(Q)$(MAKE) $(clean)=$(patsubst _clean_%,%,$@)
+_clean_srctree:
+	$(Q)$(MAKE) $(clean)='$(srctree)'
+
+$(filter-out _clean_srctree,$(clean-dirs)):
+	$(Q)$(MAKE) $(clean)='$(patsubst _clean_%,%,$@)'
 
 clean: archclean $(clean-dirs)
 	$(call cmd,rmdirs)
@@ -1408,7 +1426,7 @@ endif
 # Shorthand for $(Q)$(MAKE) -f scripts/Makefile.clean obj=dir
 # Usage:
 # $(Q)$(MAKE) $(clean)=dir
-clean := -f $(if $(KBUILD_SRC),$(srctree)/)scripts/Makefile.clean obj
+clean := -f '$(if $(KBUILD_SRC),$(srctree)/)scripts/Makefile.clean' obj
 
 endif	# skip-makefile
 

@@ -1,0 +1,84 @@
+#!/bin/sh
+
+set -eu
+
+make=${MAKE:-mingw32-make}
+shell=${CONFIG_SHELL:-sh}
+case "$shell" in
+*/*|*\\*) ;;
+*) shell=`command -v "$shell"` ;;
+esac
+src=`cd "${1:-.}" && pwd`
+tmp=${TMPDIR:-${TEMP:-.}}
+
+make_host=`"$make" --no-print-directory -f - print <<'EOF'
+$(info $(MAKE_HOST))
+print: ;
+EOF
+`
+case "$make_host" in
+*mingw32*)
+	src=`cygpath -am "$src"`
+	tmp=`cygpath -am "$tmp"`
+	shell=`cygpath -am "$shell"`
+	;;
+esac
+
+work="$tmp/busybox-mingw-paths-$$ path-\$share"
+
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+mkdir -p "$work/generated" "$work/output"
+
+"$shell" "$src/scripts/gen_build_files.sh" "$src" "$work/generated"
+test -f "$work/generated/include/applets.h"
+test -f "$work/generated/include/usage.h"
+
+"$make" --no-print-directory -C "$src" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	HOST_COMPILER=clang CROSS_COMPILER=clang \
+	O="$work/output" outputmakefile
+test -f "$work/output/Makefile"
+grep -F 'KERNELOUTPUT :=' "$work/output/Makefile" | grep -F '$$share' >/dev/null
+
+"$make" --no-print-directory -C "$work/output" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	HOST_COMPILER=clang CROSS_COMPILER=clang outputmakefile
+
+mkdir "$work/output-env"
+KBUILD_OUTPUT="$work/output-env" \
+"$make" --no-print-directory -C "$src" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	HOST_COMPILER=clang CROSS_COMPILER=clang outputmakefile
+test -f "$work/output-env/Makefile"
+grep -F 'KERNELOUTPUT :=' "$work/output-env/Makefile" | grep -F '$$share' >/dev/null
+
+case "$work" in
+[A-Za-z]:/*)
+	printf 'PASS: native Make drive, space, dollar, O= and KBUILD_OUTPUT paths\n'
+	;;
+*)
+	printf 'SKIP: drive-path assertion outside native Windows\n'
+	;;
+esac
+
+if test -n "${BUSYBOX_TEST_UNC_ROOT:-}"; then
+	unc_source=${BUSYBOX_TEST_UNC_SOURCE:-}
+	if test -z "$unc_source"; then
+		case "$src" in
+		[A-Za-z]:/*)
+			drive=${src%%:*}
+			unc_source="//localhost/${drive}\$${src#?:}"
+			;;
+		*) unc_source= ;;
+		esac
+	fi
+	if test -n "$unc_source"; then
+		mkdir "$work/unc-object"
+		"$make" --no-print-directory -C "$work/unc-object" \
+			SHELL="$shell" CONFIG_SHELL="$shell" \
+			HOST_COMPILER=clang CROSS_COMPILER=clang \
+			KBUILD_SRC="$unc_source" -f "$unc_source/Makefile" outputmakefile
+		grep -F 'KERNELSRC    :=' "$work/unc-object/Makefile" | grep -F '$$' >/dev/null
+		printf 'PASS: native Make UNC source and dollar path propagation\n'
+	fi
+fi
