@@ -35,7 +35,7 @@ subdir-ymn      := $(sort $(subdir-ym) $(subdir-n) $(subdir-))
 
 # Add subdir path
 
-subdir-ymn	:= $(addprefix $(obj)/,$(subdir-ymn))
+subdir-ymn	:= $(addprefix $(src)/,$(subdir-ymn))
 
 # build a list of files to remove, usually releative to the current
 # directory
@@ -46,25 +46,25 @@ __clean-files	:= $(extra-y) $(EXTRA_TARGETS) $(always) \
 		   $(hostprogs-y) $(hostprogs-m) $(hostprogs-)
 
 # as clean-files is given relative to the current directory, this adds
-# a $(obj) prefix, except for absolute paths
+# a $(src) prefix, except for absolute paths
 
 __clean-files   := $(wildcard                                               \
-                   $(addprefix $(obj)/, $(filter-out /%, $(__clean-files))) \
+                   $(addprefix $(src)/, $(filter-out /%, $(__clean-files))) \
 		   $(filter /%, $(__clean-files)))
 
 # as clean-dirs is given relative to the current directory, this adds
-# a $(obj) prefix, except for absolute paths
+# a $(src) prefix, except for absolute paths
 
 __clean-dirs    := $(wildcard                                               \
-                   $(addprefix $(obj)/, $(filter-out /%, $(clean-dirs)))    \
+                   $(addprefix $(src)/, $(filter-out /%, $(clean-dirs)))    \
 		   $(filter /%, $(clean-dirs)))
 
 # ==========================================================================
 
-quiet_cmd_clean    = CLEAN   $(obj)
-      cmd_clean    = rm -f $(__clean-files)
+quiet_cmd_clean    = CLEAN   $(src)
+      cmd_clean    = rm -f $(foreach f,$(__clean-files),'$(f)')
 quiet_cmd_cleandir = CLEAN   $(__clean-dirs)
-      cmd_cleandir = rm -rf $(__clean-dirs)
+      cmd_cleandir = rm -rf $(foreach d,$(__clean-dirs),'$(d)')
 
 
 __clean: $(subdir-ymn)
@@ -89,7 +89,7 @@ endif
 
 PHONY += $(subdir-ymn)
 $(subdir-ymn):
-	$(Q)$(MAKE) $(clean)=$@
+	$(Q)$(MAKE) $(clean)='$@'
 
 # If quiet is set, only print short version of command
 

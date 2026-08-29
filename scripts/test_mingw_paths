@@ -25,13 +25,25 @@ case "$make_host" in
 esac
 
 work="$tmp/busybox-mingw-paths-$$ path-\$share"
+clean_root="$tmp/busybox-mingw-clean-$$-\$share"
 
-trap 'rm -rf "$work"' EXIT HUP INT TERM
-mkdir -p "$work/generated" "$work/output"
+trap 'rm -rf "$work" "$clean_root"' EXIT HUP INT TERM
+mkdir -p "$work/generated" "$work/output" "$clean_root"
 
 "$shell" "$src/scripts/gen_build_files.sh" "$src" "$work/generated"
 test -f "$work/generated/include/applets.h"
 test -f "$work/generated/include/usage.h"
+
+if "$make" --no-print-directory -C "$src" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	HOST_COMPILER=clang CROSS_COMPILER=clang \
+	O="$work/does-not-exist" outputmakefile >"$work/missing-output.log" 2>&1
+then
+	echo "FAIL: nonexistent O= directory was accepted"
+	exit 1
+fi
+grep -F 'output directory' "$work/missing-output.log" >/dev/null
+grep -F 'does not exist' "$work/missing-output.log" >/dev/null
 
 "$make" --no-print-directory -C "$src" \
 	SHELL="$shell" CONFIG_SHELL="$shell" \
@@ -52,9 +64,19 @@ KBUILD_OUTPUT="$work/output-env" \
 test -f "$work/output-env/Makefile"
 grep -F 'KERNELOUTPUT :=' "$work/output-env/Makefile" | grep -F '$$share' >/dev/null
 
+clean_dir="$clean_root/clean-probe"
+mkdir "$clean_dir"
+printf 'clean-files := remove.me\n' >"$clean_dir/Kbuild"
+printf 'remove me\n' >"$clean_dir/remove.me"
+"$make" --no-print-directory -C "$work" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	KBUILD_SRC="$src" srctree="$src" \
+	-f "$src/scripts/Makefile.clean" obj="$clean_dir" __clean
+test ! -e "$clean_dir/remove.me"
+
 case "$work" in
 [A-Za-z]:/*)
-	printf 'PASS: native Make drive, space, dollar, O= and KBUILD_OUTPUT paths\n'
+	printf 'PASS: native Make drive, space, dollar, O=, KBUILD_OUTPUT and clean paths\n'
 	;;
 *)
 	printf 'SKIP: drive-path assertion outside native Windows\n'
@@ -79,6 +101,22 @@ if test -n "${BUSYBOX_TEST_UNC_ROOT:-}"; then
 			HOST_COMPILER=clang CROSS_COMPILER=clang \
 			KBUILD_SRC="$unc_source" -f "$unc_source/Makefile" outputmakefile
 		grep -F 'KERNELSRC    :=' "$work/unc-object/Makefile" | grep -F '$$' >/dev/null
-		printf 'PASS: native Make UNC source and dollar path propagation\n'
+
+		case "$work" in
+		[A-Za-z]:/*)
+			drive=${work%%:*}
+			unc_work="//localhost/${drive}\$${clean_root#?:}"
+			mkdir "$clean_root/unc-clean"
+			printf 'clean-files := remove.me\n' >"$clean_root/unc-clean/Kbuild"
+			printf 'remove me\n' >"$clean_root/unc-clean/remove.me"
+			"$make" --no-print-directory -C "$work" \
+				SHELL="$shell" CONFIG_SHELL="$shell" \
+				KBUILD_SRC="$unc_source" srctree="$unc_source" \
+				-f "$unc_source/scripts/Makefile.clean" \
+				obj="$unc_work/unc-clean" __clean
+			test ! -e "$clean_root/unc-clean/remove.me"
+			;;
+		esac
+		printf 'PASS: native Make UNC source, dollar and clean paths\n'
 	fi
 fi

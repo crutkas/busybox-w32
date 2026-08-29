@@ -54,6 +54,7 @@ jobs:
         update: true
         install: >-
           base-devel
+          mingw-w64-clang-aarch64-make
           mingw-w64-clang-aarch64-toolchain
           sharutils
           xz
@@ -80,6 +81,18 @@ jobs:
         if ($uname -ne 'aarch64') {
           throw "Expected uname -m to report aarch64, got $uname"
         }
+    - name: test native MinGW Make paths
+      shell: msys2 {0}
+      run: |
+        mkdir native-bin native-path-tests
+        ./busybox.exe --install "$PWD/native-bin"
+        PATH="$PWD/native-bin:/clangarm64/bin:/usr/bin:/c/Windows/System32" \
+        SHELL="$PWD/native-bin/sh.exe" \
+        CONFIG_SHELL="$PWD/native-bin/sh.exe" \
+        TMPDIR="$PWD/native-path-tests" \
+        BUSYBOX_TEST_UNC_ROOT=enabled \
+        /clangarm64/bin/mingw32-make.exe \
+          HOST_COMPILER=clang CROSS_COMPILER=clang test_mingw_paths
     - name: run Git-critical applet smoke tests
       shell: msys2 {0}
       working-directory: ./testsuite

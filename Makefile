@@ -117,11 +117,14 @@ ifneq ($(KBUILD_OUTPUT),)
 saved-output := $(KBUILD_OUTPUT)
 ifneq ($(findstring mingw32,$(MAKE_HOST)),)
 KBUILD_OUTPUT := $(value KBUILD_OUTPUT)
+output-dir-exists := $(shell if [ -d '$(KBUILD_OUTPUT)' ]; then echo y; fi)
+$(if $(filter y,$(output-dir-exists)),, \
+     $(error output directory "$(saved-output)" does not exist))
 else
 KBUILD_OUTPUT := $(shell cd '$(KBUILD_OUTPUT)' && /bin/pwd)
-endif
 $(if $(KBUILD_OUTPUT),, \
      $(error output directory "$(saved-output)" does not exist))
+endif
 
 PHONY += $(MAKECMDGOALS)
 
@@ -546,6 +549,10 @@ ifeq ($(KBUILD_EXTMOD),)
 PHONY += scripts
 scripts: gen_build_files scripts_basic include/config/MARKER
 	$(Q)$(MAKE) $(build)=$(@)
+
+PHONY += test_mingw_paths
+test_mingw_paths:
+	$(Q)$(CONFIG_SHELL) '$(srctree)/scripts/test_mingw_paths' '$(srctree)'
 
 scripts_basic: include/autoconf.h
 
