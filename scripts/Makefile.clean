@@ -3,6 +3,9 @@
 # ==========================================================================
 
 src := $(value obj)
+squote := '
+escsq = $(subst $(squote),'\$(squote)',$1)
+shellquote = '$(call escsq,$1)'
 
 PHONY := __clean
 __clean:
@@ -62,9 +65,9 @@ __clean-dirs    := $(wildcard                                               \
 # ==========================================================================
 
 quiet_cmd_clean    = CLEAN   $(src)
-      cmd_clean    = rm -f $(foreach f,$(__clean-files),'$(f)')
+      cmd_clean    = rm -f $(foreach f,$(__clean-files),$(call shellquote,$(f)))
 quiet_cmd_cleandir = CLEAN   $(__clean-dirs)
-      cmd_cleandir = rm -rf $(foreach d,$(__clean-dirs),'$(d)')
+      cmd_cleandir = rm -rf $(foreach d,$(__clean-dirs),$(call shellquote,$(d)))
 
 
 __clean: $(subdir-ymn)
@@ -93,7 +96,7 @@ $(subdir-ymn):
 
 # If quiet is set, only print short version of command
 
-cmd = @$(if $($(quiet)cmd_$(1)),echo '  $($(quiet)cmd_$(1))' &&) $(cmd_$(1))
+cmd = @$(if $($(quiet)cmd_$(1)),printf '%s\n' '  $(call escsq,$($(quiet)cmd_$(1)))' &&) $(cmd_$(1))
 
 
 # Declare the contents of the .PHONY variable as phony.  We keep that

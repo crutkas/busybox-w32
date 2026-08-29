@@ -65,14 +65,22 @@ test -f "$work/output-env/Makefile"
 grep -F 'KERNELOUTPUT :=' "$work/output-env/Makefile" | grep -F '$$share' >/dev/null
 
 clean_dir="$clean_root/clean-probe"
+clean_log="$clean_root/clean.log"
 mkdir "$clean_dir"
 printf 'clean-files := remove.me\n' >"$clean_dir/Kbuild"
 printf 'remove me\n' >"$clean_dir/remove.me"
+printf 'keep me\n' >"$clean_dir/keep.me"
 "$make" --no-print-directory -C "$work" \
 	SHELL="$shell" CONFIG_SHELL="$shell" \
 	KBUILD_SRC="$src" srctree="$src" \
-	-f "$src/scripts/Makefile.clean" obj="$clean_dir" __clean
+	-f "$src/scripts/Makefile.clean" obj="$clean_dir" V=1 quiet= __clean \
+	>"$clean_log" 2>&1
+grep -F "$clean_dir/remove.me" "$clean_log" >/dev/null ||
+	{ cat "$clean_log"; exit 1; }
+grep -F '$share' "$clean_log" >/dev/null ||
+	{ cat "$clean_log"; exit 1; }
 test ! -e "$clean_dir/remove.me"
+test -e "$clean_dir/keep.me"
 
 case "$work" in
 [A-Za-z]:/*)
@@ -109,12 +117,19 @@ if test -n "${BUSYBOX_TEST_UNC_ROOT:-}"; then
 			mkdir "$clean_root/unc-clean"
 			printf 'clean-files := remove.me\n' >"$clean_root/unc-clean/Kbuild"
 			printf 'remove me\n' >"$clean_root/unc-clean/remove.me"
+			printf 'keep me\n' >"$clean_root/unc-clean/keep.me"
 			"$make" --no-print-directory -C "$work" \
 				SHELL="$shell" CONFIG_SHELL="$shell" \
 				KBUILD_SRC="$unc_source" srctree="$unc_source" \
 				-f "$unc_source/scripts/Makefile.clean" \
-				obj="$unc_work/unc-clean" __clean
+				obj="$unc_work/unc-clean" V=1 quiet= __clean \
+				>"$clean_root/unc-clean.log" 2>&1
+			grep -F "$unc_work/unc-clean/remove.me" "$clean_root/unc-clean.log" >/dev/null ||
+				{ cat "$clean_root/unc-clean.log"; exit 1; }
+			grep -F '$share' "$clean_root/unc-clean.log" >/dev/null ||
+				{ cat "$clean_root/unc-clean.log"; exit 1; }
 			test ! -e "$clean_root/unc-clean/remove.me"
+			test -e "$clean_root/unc-clean/keep.me"
 			;;
 		esac
 		printf 'PASS: native Make UNC source, dollar and clean paths\n'
