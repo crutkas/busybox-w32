@@ -709,6 +709,10 @@ static int filstat(char *nm, enum token mode)
 			i = W_OK;
 		if (mode == FILEX)
 			i = X_OK;
+#if ENABLE_PLATFORM_MINGW32
+		if (mode == FILRD)
+			return access(nm, i) == 0;
+#endif
 		return test_st_mode(&s, i);
 	}
 	if (is_file_type(mode)) {
