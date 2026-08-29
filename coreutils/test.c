@@ -710,7 +710,7 @@ static int filstat(char *nm, enum token mode)
 		if (mode == FILEX)
 			i = X_OK;
 #if ENABLE_PLATFORM_MINGW32
-		if (mode == FILRD)
+		if (mode == FILRD && S_ISREG(s.st_mode))
 			return access(nm, i) == 0;
 #endif
 		return test_st_mode(&s, i);
