@@ -192,10 +192,12 @@ static ALWAYS_INLINE uint32_t rotr32(uint32_t x, unsigned n)
 }
 /* rotr64 in needed for sha512 only: */
 //#define rotr64(x,n) (((x) >> (n)) | ((x) << (64 - (n))))
+#if NEED_SHA512
 static ALWAYS_INLINE uint64_t rotr64(uint64_t x, unsigned n)
 {
 	return (x >> n) | (x << (64 - n));
 }
+#endif
 #endif /* !ENABLE_FEATURE_USE_CNG_API */
 
 /* rotl64 only used for sha3 currently */
