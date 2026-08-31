@@ -2601,13 +2601,36 @@ int FAST_FUNC mingw_access(const char *name, int mode)
 	if (!wpath)
 		return -1;
 
-	/* Windows can only handle test for existence, read or write */
-	if (mode == F_OK || (mode & ~X_OK)) {
-		ret = _waccess(wpath, mode & ~X_OK);
-		if (ret < 0 || !(mode & X_OK)) {
-			return ret;
+	if (mode == F_OK)
+		return _waccess(wpath, F_OK);
+
+	if (mode & R_OK) {
+		DWORD attr = GetFileAttributesW(wpath);
+		HANDLE handle;
+
+		if (attr != INVALID_FILE_ATTRIBUTES &&
+				(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+			ret = _waccess(wpath, R_OK);
+			if (ret < 0)
+				return ret;
+		} else {
+			handle = CreateFileW(wpath, FILE_READ_DATA,
+					FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+					NULL, OPEN_EXISTING, 0, NULL);
+			if (handle == INVALID_HANDLE_VALUE) {
+				errno = err_win_to_posix();
+				return -1;
+			}
+			CloseHandle(handle);
 		}
 	}
+	if (mode & W_OK) {
+		ret = _waccess(wpath, W_OK);
+		if (ret < 0)
+			return ret;
+	}
+	if ((mode & (R_OK | W_OK)) && !(mode & X_OK))
+		return 0;
 
 	/* NEEDSWORK: avoid double mingw_pathconv() */
 	if (!mingw_stat(name, &s)) {

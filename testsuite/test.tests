@@ -96,4 +96,15 @@ testing "test '!' '(' = '(': should be false (1)" \
 	"1\n" \
 	"" ""
 
+optional PLATFORM_MINGW32
+testing "test -r uses Windows read access for files owned by another account" \
+	"p=\"\$(cygpath -u \"\$SYSTEMROOT/System32/kernel32.dll\")\"; test -e \"\$p\"; echo exists=\$?; test -r \"\$p\"; echo builtin=\$?; busybox test -r \"\$p\"; echo applet=\$?; head -c 1 \"\$p\" >/dev/null; echo read=\$?; test -r .; echo directory=\$?" \
+	"exists=0\nbuiltin=0\napplet=0\nread=0\ndirectory=0\n" \
+	"" ""
+
+testing "test -r rejects ACL-denied and missing files" \
+	"p=unreadable; printf denied >\"\$p\"; icacls \"\$p\" /inheritance:r /deny '*S-1-1-0:(R)' >/dev/null; test -e \"\$p\"; echo exists=\$?; test -r \"\$p\"; echo builtin=\$?; busybox test -r \"\$p\"; echo applet=\$?; head -c 1 \"\$p\" >/dev/null 2>&1; echo read=\$?; icacls \"\$p\" /reset >/dev/null; rm -f \"\$p\"; test -r missing; echo missing=\$?" \
+	"exists=0\nbuiltin=1\napplet=1\nread=1\nmissing=1\n" \
+	"" ""
+
 exit $FAILCOUNT

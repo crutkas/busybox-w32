@@ -1,0 +1,137 @@
+#!/bin/sh
+
+set -eu
+
+make=${MAKE:-mingw32-make}
+shell=${CONFIG_SHELL:-sh}
+case "$shell" in
+*/*|*\\*) ;;
+*) shell=`command -v "$shell"` ;;
+esac
+src=`cd "${1:-.}" && pwd`
+tmp=${TMPDIR:-${TEMP:-.}}
+
+make_host=`"$make" --no-print-directory -f - print <<'EOF'
+$(info $(MAKE_HOST))
+print: ;
+EOF
+`
+case "$make_host" in
+*mingw32*)
+	src=`cygpath -am "$src"`
+	tmp=`cygpath -am "$tmp"`
+	shell=`cygpath -am "$shell"`
+	;;
+esac
+
+work="$tmp/busybox-mingw-paths-$$ path-\$share"
+clean_root="$tmp/busybox-mingw-clean-$$-\$share"
+
+trap 'rm -rf "$work" "$clean_root"' EXIT HUP INT TERM
+mkdir -p "$work/generated" "$work/output" "$clean_root"
+
+"$shell" "$src/scripts/gen_build_files.sh" "$src" "$work/generated"
+test -f "$work/generated/include/applets.h"
+test -f "$work/generated/include/usage.h"
+
+if "$make" --no-print-directory -C "$src" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	HOST_COMPILER=clang CROSS_COMPILER=clang \
+	O="$work/does-not-exist" outputmakefile >"$work/missing-output.log" 2>&1
+then
+	echo "FAIL: nonexistent O= directory was accepted"
+	exit 1
+fi
+grep -F 'output directory' "$work/missing-output.log" >/dev/null
+grep -F 'does not exist' "$work/missing-output.log" >/dev/null
+
+"$make" --no-print-directory -C "$src" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	HOST_COMPILER=clang CROSS_COMPILER=clang \
+	O="$work/output" outputmakefile
+test -f "$work/output/Makefile"
+grep -F 'KERNELOUTPUT :=' "$work/output/Makefile" | grep -F '$$share' >/dev/null
+
+"$make" --no-print-directory -C "$work/output" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	HOST_COMPILER=clang CROSS_COMPILER=clang outputmakefile
+
+mkdir "$work/output-env"
+KBUILD_OUTPUT="$work/output-env" \
+"$make" --no-print-directory -C "$src" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	HOST_COMPILER=clang CROSS_COMPILER=clang outputmakefile
+test -f "$work/output-env/Makefile"
+grep -F 'KERNELOUTPUT :=' "$work/output-env/Makefile" | grep -F '$$share' >/dev/null
+
+clean_dir="$clean_root/clean-probe"
+clean_log="$clean_root/clean.log"
+mkdir "$clean_dir"
+printf 'clean-files := remove.me\n' >"$clean_dir/Kbuild"
+printf 'remove me\n' >"$clean_dir/remove.me"
+printf 'keep me\n' >"$clean_dir/keep.me"
+"$make" --no-print-directory -C "$work" \
+	SHELL="$shell" CONFIG_SHELL="$shell" \
+	KBUILD_SRC="$src" srctree="$src" \
+	-f "$src/scripts/Makefile.clean" obj="$clean_dir" V=1 quiet= __clean \
+	>"$clean_log" 2>&1
+grep -F "$clean_dir/remove.me" "$clean_log" >/dev/null ||
+	{ cat "$clean_log"; exit 1; }
+grep -F '$share' "$clean_log" >/dev/null ||
+	{ cat "$clean_log"; exit 1; }
+test ! -e "$clean_dir/remove.me"
+test -e "$clean_dir/keep.me"
+
+case "$work" in
+[A-Za-z]:/*)
+	printf 'PASS: native Make drive, space, dollar, O=, KBUILD_OUTPUT and clean paths\n'
+	;;
+*)
+	printf 'SKIP: drive-path assertion outside native Windows\n'
+	;;
+esac
+
+if test -n "${BUSYBOX_TEST_UNC_ROOT:-}"; then
+	unc_source=${BUSYBOX_TEST_UNC_SOURCE:-}
+	if test -z "$unc_source"; then
+		case "$src" in
+		[A-Za-z]:/*)
+			drive=${src%%:*}
+			unc_source="//localhost/${drive}\$${src#?:}"
+			;;
+		*) unc_source= ;;
+		esac
+	fi
+	if test -n "$unc_source"; then
+		mkdir "$work/unc-object"
+		"$make" --no-print-directory -C "$work/unc-object" \
+			SHELL="$shell" CONFIG_SHELL="$shell" \
+			HOST_COMPILER=clang CROSS_COMPILER=clang \
+			KBUILD_SRC="$unc_source" -f "$unc_source/Makefile" outputmakefile
+		grep -F 'KERNELSRC    :=' "$work/unc-object/Makefile" | grep -F '$$' >/dev/null
+
+		case "$work" in
+		[A-Za-z]:/*)
+			drive=${work%%:*}
+			unc_work="//localhost/${drive}\$${clean_root#?:}"
+			mkdir "$clean_root/unc-clean"
+			printf 'clean-files := remove.me\n' >"$clean_root/unc-clean/Kbuild"
+			printf 'remove me\n' >"$clean_root/unc-clean/remove.me"
+			printf 'keep me\n' >"$clean_root/unc-clean/keep.me"
+			"$make" --no-print-directory -C "$work" \
+				SHELL="$shell" CONFIG_SHELL="$shell" \
+				KBUILD_SRC="$unc_source" srctree="$unc_source" \
+				-f "$unc_source/scripts/Makefile.clean" \
+				obj="$unc_work/unc-clean" V=1 quiet= __clean \
+				>"$clean_root/unc-clean.log" 2>&1
+			grep -F "$unc_work/unc-clean/remove.me" "$clean_root/unc-clean.log" >/dev/null ||
+				{ cat "$clean_root/unc-clean.log"; exit 1; }
+			grep -F '$share' "$clean_root/unc-clean.log" >/dev/null ||
+				{ cat "$clean_root/unc-clean.log"; exit 1; }
+			test ! -e "$clean_root/unc-clean/remove.me"
+			test -e "$clean_root/unc-clean/keep.me"
+			;;
+		esac
+		printf 'PASS: native Make UNC source, dollar and clean paths\n'
+	fi
+fi
