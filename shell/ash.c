@@ -2759,8 +2759,8 @@ initvar(void)
 #if ENABLE_FEATURE_EDITING && ENABLE_FEATURE_EDITING_FANCY_PROMPT
 	vps1.var_text = "PS1=\\w \\$ ";
 #else
-	if (!get_cached_euid(&groupinfo.euid));
-		vps1.var_text = "PS1=# ";
+	(void)get_cached_euid(&groupinfo.euid);
+	vps1.var_text = "PS1=# ";
 #endif
 	vp = varinit;
 	end = vp + ARRAY_SIZE(varinit);

@@ -1,0 +1,46 @@
+#!/bin/sh
+
+. ./testing.sh
+
+testing "ARM64 vNext bootstrap applet inventory" '
+	test "$(awk "END { print NR }" "$bindir/configs/arm64_vnext_payload_applets")" = 31
+	test "$(awk "END { print NR }" "$bindir/configs/arm64_vnext_bootstrap_applets")" = 34
+	{
+		cat "$bindir/configs/arm64_vnext_payload_applets"
+		cat "$bindir/configs/arm64_vnext_bootstrap_applets"
+		printf "lash\n"
+	} | sort -u >expected-list
+	busybox --list | sort >actual-list
+	cmp expected-list actual-list
+	! grep -qx ash actual-list
+	grep -qx lash actual-list
+	echo "inventory ok"
+' "inventory ok\n" "" ""
+
+testing "ARM64 vNext bootstrap config contract" '
+	grep -qx "# CONFIG_FEATURE_UTF8_OUTPUT is not set" "$bindir/.config"
+	grep -qx "# CONFIG_FEATURE_TAR_AUTODETECT is not set" "$bindir/.config"
+	grep -qx "# CONFIG_ASH is not set" "$bindir/.config"
+	busybox lash -c "test x = x"
+	! busybox ash -c true 2>/dev/null
+	echo "config ok"
+' "config ok\n" "" ""
+
+testing "ARM64 vNext bootstrap shell and core behavior" '
+	set -eu
+	value=$(printf "z\na\n" | sort | head -n 1)
+	test "$value" = a
+	test "$(expr 20 + 22)" = 42
+	printf "alpha beta\n" | awk "{ print \$2 }" | grep -x beta
+	tmp=arm64-vnext-bootstrap.$$
+	mkdir -p "$tmp/src"
+	printf payload >"$tmp/src/file"
+	cp "$tmp/src/file" "$tmp/copy"
+	cmp "$tmp/src/file" "$tmp/copy"
+	tar -cf "$tmp/archive.tar" -C "$tmp/src" file
+	test -s "$tmp/archive.tar"
+	rm -rf "$tmp"
+	echo "behavior ok"
+' "beta\nbehavior ok\n" "" ""
+
+exit $FAILCOUNT
